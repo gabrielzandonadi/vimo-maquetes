@@ -3,5 +3,5 @@
 export const CONFIG = {
   // Chave Google Maps Platform com a Map Tiles API habilitada. Com ela, o entorno fotorrealista
   // (Google 3D Tiles) liga sozinho ao abrir a página.
-  googleMapsKey: '',
+  googleMapsKey: 'AIzaSyAIurA6f-kdsmSzUJfsqOuZifXFTMxmt-Y',
 };
