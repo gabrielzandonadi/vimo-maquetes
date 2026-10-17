@@ -29,13 +29,26 @@ export function buildContext(SITE, TERRAIN, renderer) {
   const B = SITE.box;
   const heightAt0 = makeHeightSampler(TERRAIN);
   const landPoly = [...SITE.coast, [-B, -B], [-B, B]];
-  const isLand = (x, z) => pointInPoly(x, z, landPoly) || SITE.islands.some(p => pointInPoly(x, z, p));
-  // o lote do Apogeo é aplainado em 0 (o SRTM tem ruído de ±2 m em área urbana)
+  // máscara terra/mar rasterizada uma vez (512²): consultar o polígono da costa em cada vértice do relevo
+  // custava ~0,7 s no Mac e ~3 s num notebook comum
+  const MASK = 512, mk = document.createElement('canvas'); mk.width = mk.height = MASK;
+  const mctx = mk.getContext('2d', { willReadFrequently: true });
+  const mpath = pts => { mctx.beginPath(); pts.forEach(([x, z], i) => { const a = (x + B) / (2 * B) * MASK, c = (z + B) / (2 * B) * MASK; i ? mctx.lineTo(a, c) : mctx.moveTo(a, c); }); mctx.closePath(); mctx.fill(); };
+  mctx.fillStyle = '#fff'; mpath(landPoly); SITE.islands.forEach(mpath);
+  const maskData = mctx.getImageData(0, 0, MASK, MASK).data;
+  const isLand = (x, z) => {
+    const i = Math.floor((x + B) / (2 * B) * MASK), j = Math.floor((z + B) / (2 * B) * MASK);
+    if (i < 0 || j < 0 || i >= MASK || j >= MASK) return pointInPoly(x, z, landPoly);
+    return maskData[(j * MASK + i) * 4] > 127;
+  };
+  // o lote é aplainado em 0 (o SRTM tem ruído de ±2 m em área urbana); centro e raio vêm do SITE
+  const FL = SITE.flatten || { c: [-45, -9], r: 70 };
+  const SEA = SITE.seaLevel ?? SEA_LEVEL;
   const heightAt = (x, z) => {
     let h = heightAt0(x, z);
-    const d = Math.hypot(x + 45, z + 9);
-    if (d < 140) h = h * Math.min(1, Math.max(0, (d - 70) / 70));
-    if (!isLand(x, z)) h = Math.min(h, SEA_LEVEL - 2.5);
+    const d = Math.hypot(x - FL.c[0], z - FL.c[1]);
+    if (d < 2 * FL.r) h = h * Math.min(1, Math.max(0, (d - FL.r) / FL.r));
+    if (!isLand(x, z)) h = Math.min(h, SEA - 2.5);
     return h;
   };
 
@@ -186,7 +199,7 @@ export function buildContext(SITE, TERRAIN, renderer) {
     sunDirection: new THREE.Vector3(0, 1, 0), sunColor: 0xffffff, waterColor: 0x0d4f63, distortionScale: 2.2, fog: false,
   });
   water.rotation.x = -Math.PI / 2;
-  water.position.y = SEA_LEVEL;
+  water.position.y = SEA;
   water.material.uniforms.size.value = 6;
   water.userData.occluder = false;
   group.add(water);

@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="pt-BR" data-project="homero">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edifício Dr. Homero Tavares</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Arsenal:wght@400;700&family=KoHo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+  "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+  "3d-tiles-renderer": "https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.4.20/build/index.js",
+  "3d-tiles-renderer/plugins": "https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.4.20/build/index.plugins.js",
+  "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js"
+} }
+</script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <img class="brand-logo" src="assets/vimo-logo.png" alt="Vimo">
+    <span class="brand-sep"></span>
+    <div>
+      <div class="brand-name">Apogeo Residences</div>
+      <div class="brand-sub" id="brandSub">Praia da Costa · Vila Velha/ES</div>
+    </div>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="maquete">Maquete 3D</button>
+    <button class="tab" data-tab="mapa">Mapa</button>
+    <button class="tab" data-tab="sobre">Sobre</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ======================= MAQUETE ======================= -->
+  <section class="view active" id="view-maquete">
+    <div id="stage"></div>
+    <div id="loading"><div class="spinner"></div><p>Montando a maquete…</p></div>
+
+    <aside class="panel left" id="availPanel">
+      <button class="panel-toggle" id="availToggle" aria-label="Recolher painel"><span>‹</span></button>
+      <div class="panel-body">
+        <h2>Disponibilidade</h2>
+        <p class="lead" id="availLead"></p>
+        <div class="avail-list" id="availList"></div>
+        <button class="btn ghost small compare-open" id="compareOpen">Comparar as disponíveis</button>
+        <div class="section-title">
+          <span>Mapa de andares</span>
+          <span class="legend-inline"><i class="dot avail"></i>Disponível <i class="dot sold"></i>Vendida</span>
+        </div>
+        <div class="stack" id="floors"></div>
+        <p class="fine">Atualizado a partir de vempravimo.com.br em <span id="extractDate"></span>.</p>
+      </div>
+    </aside>
+
+    <aside class="panel right hidden" id="unitPanel">
+      <button class="close" id="unitClose" aria-label="Fechar">×</button>
+      <div class="panel-body" id="unitBody"></div>
+    </aside>
+
+    <div class="hud-top">
+      <div class="seg" id="colorMode" title="Modo de visualização">
+        <button class="on" data-m="real">Realista</button>
+        <button data-m="disp">Disponibilidade</button>
+      </div>
+    </div>
+
+    <div class="hud-right">
+      <div class="compass" id="compass" title="Bússola (clique para alinhar ao Norte)">
+        <div class="needle" id="needle"><span class="n">N</span><span class="s">S</span><span class="e">L</span><span class="w">O</span></div>
+      </div>
+      <button class="icon-btn" id="layersBtn" title="Vistas e camadas" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".5"/></svg>
+      </button>
+      <div class="layers hidden" id="layers">
+        <a class="sv-link" id="svLink" target="_blank" rel="noreferrer" title="Abre o Google Street View em frente ao Apogeo">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="4.6" r="2.6" fill="#f6c15a"/><path d="M8.6 9.2c0-1.1.9-2 2-2h2.8c1.1 0 2 .9 2 2v5.2h-1.7V21h-3.4v-6.6H8.6z" fill="#f6c15a"/></svg>
+          <span><b>Street View</b><small>Ver a rua em frente ao prédio</small></span><em>↗</em>
+        </a>
+        <div class="layers-title">Vistas</div>
+        <div class="presets" id="presets">
+          <button data-p="geral">Vista geral</button>
+          <button data-p="praia">Da praia</button>
+          <button data-p="fundos">Rua Lúcio Bacelar</button>
+          <button data-p="aerea">Planta (topo)</button>
+        </div>
+        <div class="layers-title">Camadas</div>
+        <div class="toggles">
+          <label><input type="checkbox" id="tPath"> Trajetória do sol</label>
+          <label><input type="checkbox" id="tSeasons"> Verão / inverno</label>
+                    <label><input type="checkbox" id="tNeighbors" checked> Prédios vizinhos</label>
+          <label><input type="checkbox" id="tLabels"> Nomes das ruas</label>
+          <label><input type="checkbox" id="tHQ" checked> Sombras em alta</label>
+        </div>
+        <div class="layers-title">Entorno fotorrealista</div>
+        <div class="photo3d">
+          <p>Prédios, árvores e relevo reais do Google (Photorealistic 3D Tiles).</p>
+          <input type="text" id="tilesKey" placeholder="Chave Google Maps (Map Tiles API)" autocomplete="off" spellcheck="false">
+          <div class="row"><button class="btn small" id="tilesOn">Ativar</button><button class="btn small ghost hidden" id="tilesOff">Desativar</button></div>
+          <p class="fine" id="tilesStatus"></p>
+          <p class="fine" id="sunSource"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- tour interno (estilo Street View) -->
+    <div class="tour hidden" id="tour">
+      <div class="tour-top">
+        <div class="tour-title"><span id="tourUnit"></span><b id="tourRoom"></b><em id="tourSun"></em></div>
+        <button class="btn small" id="tourExit">Sair do apartamento</button>
+      </div>
+      <div class="tour-banner hidden" id="tourBanner">Ambientação ilustrativa · não é a planta oficial da unidade</div>
+      <div class="tour-light" id="tourLight" role="group" aria-label="Luz do dia">
+        <button data-h="8">Manhã</button><button data-h="12">Meio-dia</button><button data-h="16.5">Tarde</button><button data-h="20">Noite</button>
+      </div>
+      <div class="tour-side">
+        <canvas class="tour-map" id="tourMap"></canvas>
+        <div class="tour-rooms" id="tourRooms"></div>
+      </div>
+      <img id="tourPlanImg" alt="" hidden>
+    </div>
+    <div class="compare hidden" id="compare" role="dialog" aria-label="Comparar unidades disponíveis">
+      <div class="compare-card">
+        <button class="close" id="compareClose" aria-label="Fechar">×</button>
+        <h2>Comparar unidades disponíveis</h2>
+        <p class="muted" id="compareLead"></p>
+        <div class="compare-scroll"><table class="compare-table" id="compareTable"></table></div>
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="tooltip" id="tooltip"></div>
+
+    <div class="sunbar" id="sunbar">
+      <div class="sun-mini">
+        <button class="play" id="play" aria-label="Animar o dia">▶</button>
+        <button class="sun-summary-btn" id="sunExpand" title="Mostrar controles de sol e data">
+          <span class="sun-ico">☀</span><b id="clock">09:30</b><span id="miniDate">15/10/2026</span><span class="sun-mini-info" id="miniInfo"></span>
+          <span class="chev">⌃</span>
+        </button>
+      </div>
+      <div class="sun-full">
+        <div class="sun-row">
+          <div class="slider-wrap">
+            <input type="range" id="time" min="0" max="24" step="0.05" value="9">
+            <div class="daybands" id="daybands"></div>
+            <div class="ticks"><span>0h</span><span>3h</span><span>6h</span><span>9h</span><span>12h</span><span>15h</span><span>18h</span><span>21h</span><span>24h</span></div>
+          </div>
+        </div>
+        <div class="sun-row second">
+          <input type="date" id="date">
+          <div class="seg small" id="seasons">
+            <button data-d="12-21">Verão</button>
+            <button data-d="03-20">Outono</button>
+            <button data-d="06-21">Inverno</button>
+            <button data-d="09-22">Primavera</button>
+            <button data-d="today">Hoje</button>
+          </div>
+          <div class="suninfo" id="suninfo"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ======================= MAPA ======================= -->
+  <section class="view" id="view-mapa">
+    <div class="map-wrap">
+      <iframe id="mapFrame" title="Mapa Google" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+      <div class="embed-fallback map hidden" id="mapFallback"><img src="assets/img/c7_0.jpg" alt="Perspectiva do Apogeo Residences"></div>
+      <div class="map-card" id="mapCard"></div>
+    </div>
+  </section>
+
+
+  <!-- ======================= SOBRE ======================= -->
+  <section class="view scroll" id="view-sobre"><div class="about" id="about"></div></section>
+</main>
+
+<div class="lightbox hidden" id="lightbox"><button class="close" id="lbClose">×</button><button class="lb-nav prev" id="lbPrev">‹</button><img id="lbImg" alt=""><button class="lb-nav next" id="lbNext">›</button><div class="lb-cap" id="lbCap"></div></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

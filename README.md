@@ -1,6 +1,13 @@
-# Apogeo Residences · maquete 3D navegável (protótipo)
+# Maquetes 3D Vimo · Apogeo Residences e Edifício Dr. Homero Tavares
 
-Página estática em three.js com o empreendimento Apogeo Residences (Javé, Praia da Costa, Vila Velha/ES).
+Páginas estáticas em three.js para navegar em empreendimentos da Vimo, com disponibilidade, sol real e tour
+interno das unidades disponíveis. O mesmo motor atende a todos os empreendimentos; cada um é um descritor em
+`js/projects/<id>/`.
+
+| Página | Empreendimento |
+|---|---|
+| `index.html` | Apogeo Residences (Javé) |
+| `homero.html` | Edifício Dr. Homero Tavares (Barbosa Barros) |
 
 ## Rodar
 
@@ -8,71 +15,70 @@ Página estática em three.js com o empreendimento Apogeo Residences (Javé, Pra
 cd apogeo-3d && python3 -m http.server 5174
 ```
 
-## Visual (v2)
+Abra http://localhost:5174 (Apogeo) ou http://localhost:5174/homero.html. É preciso um servidor, porque
+módulos ES não carregam via `file://`. O entorno fotorrealista do Google liga sozinho quando há uma chave em
+`js/config.js`; a chave deve estar restrita por referenciador no Google Cloud.
 
-- **Design:** cores, fontes e componentes do design system de vempravimo.com.br (azul `#192a56`, dourado `#f6c15a`, areia `#f4eadc`, KoHo/Arsenal, raio 16/20 px), com tema claro.
-- **Render:** MSAA 4x, oclusão de ambiente (GTAO), tone mapping AgX, névoa atmosférica, fachadas texturizadas nos vizinhos e coqueiros na orla.
-- **Entorno fotorrealista opcional:** Google Photorealistic 3D Tiles. Ative em *Camadas → Entorno fotorrealista* com uma chave Google Maps Platform que tenha a **Map Tiles API** habilitada. Testado com chave real: a orientação foi corrigida (rotação de 180° do plugin com up `+y`), as normais são calculadas no carregamento, a altura é calibrada automaticamente pela avenida em frente ao lote e a construção atual dentro do lote é recortada no shader. A análise de insolação ainda usa os prédios do OSM, não a geometria do Google.
+## Desempenho (pensado para notebooks comuns)
 
-Abra http://localhost:5174. É preciso um servidor (módulos ES não carregam via `file://`).
+Medido com `scratchpad/bench` (Chrome headless, CPU desacelerada e GPU por software):
 
-## O que tem
-
-- **Maquete 3D** procedural: embasamento escalonado (1º–7º), lazer no 8º (praia suspensa, piscina, spa) e torre (9º–15º), com as 31 unidades clicáveis.
-- **Disponibilidade** real (status, área, preço, R$/m²), extraída da página da Vimo em 15/10/2026, com modo de cor "Disponibilidade".
-- **Sol realista**: posição solar NOAA para a coordenada do lote, céu físico, sombras em tempo real, trajetória do sol do dia e dos solstícios. Também tem noite com janelas acesas, postes e estrelas.
-- **Análise de insolação por unidade**: horas de sol da manhã e da tarde em cada varanda e uma linha do tempo por fachada, para qualquer data. O cálculo usa raycasting contra o próprio prédio, os prédios vizinhos (OSM) e o relevo (Morro do Moreno). O modo "Insolação" mostra um mapa de calor do prédio inteiro.
-- **Navegação**: orbitar, caminhar (WASD), vistas prontas e "vista da unidade" (câmera na varanda).
-- **Street View**: embed público do Google, sem chave. O botão "📍 Street View aqui" abre o panorama no ponto clicado da maquete, já na direção da câmera. Com uma chave da Maps JS API, o panorama fica interativo e aparece como marcador na maquete.
-- Mapa de satélite, galeria (fotos e plantas) e página "Sobre".
-
-## Tour interno das unidades disponíveis
-
-A ficha da unidade tem o botão **Entrar no apartamento**: a navegação é estilo Street View (arrastar para olhar, clicar no piso ou nos círculos para andar, minimapa com a planta oficial). A luz é a do sol real no horário escolhido.
-
-| Unidade | Planta usada | Observação |
+| Perfil | Antes | Depois |
 |---|---|---|
-| 901 | `c4_0` (Tipo · 4 suítes · 901) | planta exata |
-| 204 | `c3_0` (tipologia 205/305/404/503) | a planta exata da 204 não foi publicada |
-| 102 | `c2_0` (Garden Duplex) | dois pavimentos, escada interna, jardim, deck e piscina |
-| 1401 | `c5_0` (Cobertura Duplex) | dois pavimentos, cobertura com piscina |
-| 501 | — | sem planta publicada (sem tour) |
+| Notebook (CPU 4×, rede 30 Mbps): 1º quadro | 4,1 s | 1,3 s |
+| Notebook: entorno Google pronto | 19,7 s | 8,4 s |
+| Notebook: sol com prédios reais | 45 s | 1,9 s |
+| Notebook: travamentos (long tasks) | 23,4 s | 1,0 s |
+| GPU por software + CPU 6×: 1º quadro | 15,3 s | 7,9 s |
+| GPU por software: quadros/s ao girar | 1,2 | 4,2 |
 
-Cada planta é **só dados** em `js/interiors/planXXX.js`: paredes, portas, janelas, vidros, pisos, móveis e pontos de navegação, em pixels da imagem oficial, com escala e âncora. O motor (`js/interior.js`) é o mesmo para todas as unidades.
+O que foi feito:
 
-## Para escalar aos outros empreendimentos da Vimo
-
-O código já separa o que é genérico do que é específico de cada prédio:
-
-- **Genérico (reaproveitável):** motor 3D, sol/sombra (`sun.js`, `analysis.js`), entorno (`context.js`, Google 3D Tiles), motor de interiores, UI e design system Vimo.
-- **Por empreendimento:** `data.js` (gerado automaticamente da página da Vimo + OpenStreetMap), `terrain.js` (gerado), `building.js` (volumetria) e `interiors/*.js` (plantas).
-
-Hoje, o trabalho manual por empreendimento é a volumetria do prédio e o traçado das plantas. Para 20+ empreendimentos, o próximo passo é:
-1. transformar `building.js` num gerador a partir de um JSON de pavimentos (contorno + altura por andar);
-2. criar uma ferramenta interna de traçado de planta (clicar sobre a imagem → JSON) ou pedir à incorporadora o DWG/IFC/GLB.
-
-Com isso, cada empreendimento vira dados, sem código novo.
+1. **Insolação pré-calculada** (`js/projects/<id>/sun.json`, ~26 kB com gzip). O cálculo com a geometria real
+   do Google (≈280 mil triângulos + BVH) roda uma vez, offline, via `?bake=1`; o visitante só lê o resultado.
+   A diferença para o cálculo ao vivo é zero nos dias calculados e no máximo 10 min nos intermediários.
+2. **Entorno simplificado mais rápido**: máscara terra/mar rasterizada em vez de ponto-em-polígono por vértice.
+3. **Renderização sob demanda**: com a cena parada, nada é redesenhado; a GPU fica livre para carregar o entorno.
+4. **Qualidade adaptativa** (`alta` → `media` → `leve`): o nível inicial vem da placa de vídeo e do número de
+   núcleos; um governador de quadros reduz a resolução interna e depois o nível se a máquina não acompanhar.
+   `?q=alta|media|leve` força um nível. A qualidade alta é a mesma da versão anterior.
+5. **Google 3D Tiles**: erro de tela por nível (8/20/28 px; no 28 a imagem fica praticamente igual com 45% menos
+   tiles), sombras dos tiles desligadas no nível leve, e o entorno só substitui o simplificado depois de calibrado
+   (sem tela vazia durante o carregamento).
 
 ## Estrutura
 
 | Arquivo | Conteúdo |
 |---|---|
-| `js/data.js` | dados do imóvel + entorno OSM em metros locais (gerado) |
-| `js/terrain.js` | grade de relevo 131×131 (AWS Terrain Tiles/SRTM) |
-| `js/building.js` | modelo procedural e distribuição das unidades |
-| `js/context.js` | relevo, textura do solo, vizinhos, mar, postes |
-| `js/sun.js` | posição solar, nascer/pôr |
-| `js/analysis.js` | insolação por unidade |
-| `js/tiles.js` | Google 3D Tiles (carregado sob demanda) |
-| `js/interior.js` | motor de interiores (planta → 3D, navegação) |
-| `js/interiors/*.js` | plantas traçadas das unidades |
-| `js/main.js` | cena, UI, abas |
+| `js/main.js` | motor: cena, sol, UI, abas, tours, qualidade adaptativa |
+| `js/projects/<id>/index.js` | descritor do empreendimento (dados, câmera, vistas, rótulos, plantas, obra) |
+| `js/projects/apogeo/` | Apogeo (usa `js/data.js`, `js/terrain.js`, `js/building.js`, `js/interiors/`) |
+| `js/projects/homero/` | Homero: `data.js`, `terrain.js`, `building.js`, `plans.js`, `sun.json` |
+| `js/context.js` | relevo, solo, vizinhos OSM, mar |
+| `js/tiles.js` | Google 3D Tiles (sob demanda) |
+| `js/analysis.js` | insolação por unidade (ao vivo ou pré-calculada) |
+| `js/interior.js` | motor de interiores (planta → 3D, navegação estilo Street View) |
 
-## Aproximações (importante antes de usar com cliente)
+## Edifício Dr. Homero Tavares
 
-- A volumetria é **interpretada** das perspectivas e da tabela. Não é o projeto executivo. A posição de cada unidade no pavimento é estimada pela área.
-- O lote foi posicionado entre a Av. Antônio Gil Veloso e a Rua Lúcio Bacelar, a 101° (perpendicular à orla), com 84 × 28 m estimados.
-- Prédios vizinhos sem altura no OSM recebem uma altura estimada (11 pavimentos se forem residenciais, 2 nos demais casos) e aparecem num tom mais frio.
-- O relevo SRTM tem resolução de ~30 m: bom para o morro, grosseiro para detalhes urbanos.
+- **Fontes:** página da Vimo (72 unidades, 11 disponíveis, preços, plantas por tipologia, imagens) e página da
+  Barbosa Barros (estágio da obra em 28/05/2026 e fotos datadas, na aba *Sobre*).
+- **Lote:** atravessa a quadra entre a Rua Humberto Serrano (frente, leste) e a Rua Romero Botelho (oeste;
+  no OpenStreetMap ela ainda aparece como "Rua Curitiba"), ~64 × 29 m, eixo a 99°.
+- **Volumetria:** térreo envidraçado, 2 pavimentos de garagem com ripado de madeira e friso de LED, lazer
+  envidraçado no 3º (piscina e deck ao norte, playground e churrasqueira ao sul) e torre do 4º ao 12º com
+  8 apartamentos por andar (ímpares ao norte, pares ao sul), varandas em "bumerangue" com LED nas pontas.
+- **Plantas e tours:** coluna 04 traçada sobre a planta oficial (escala 0,0114 m/px, conferida pelos quartos de
+  8,10 m², pela suíte de 11,25 m² e pelas camas); coluna 06 = 04 espelhada com a varanda do estar avançando
+  0,5 m; colunas 05 e 03 = 04 e 06 giradas 180° — exatamente como nas plantas oficiais. As 11 unidades
+  disponíveis (colunas 03–06) têm tour.
+- **Aproximações:** as colunas de ponta (01/02/07/08) e o embasamento seguem a planta-chave e as perspectivas,
+  não o projeto executivo; a posição da torre no lote é estimada.
 
-Para um resultado "quase perfeito", o próximo passo natural é trocar o entorno pelo **Google Photorealistic 3D Tiles** (via `3d-tiles-renderer`, requer chave) e usar o modelo 3D oficial da incorporadora (glTF/IFC), se houver.
+## Novo empreendimento (passo a passo)
+
+1. Extrair `full.json` da página da Vimo e o entorno do Overpass; gerar `data.js` com `site_build.py`
+   (parâmetros: coordenada, eixo do lote, testada e polígono do lote) e `terrain.js` com o script de relevo.
+2. Escrever `building.js` (volumetria) e traçar as plantas das colunas disponíveis em `plans.js`.
+3. Criar `js/projects/<id>/index.js` e uma página `<id>.html` com `data-project="<id>"`.
+4. Gerar a insolação: `node bake.mjs http://localhost:5174/<id>.html js/projects/<id>/sun.json`.

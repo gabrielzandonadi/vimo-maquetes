@@ -5,7 +5,7 @@ import * as THREE from 'three';
 
 const D2R = Math.PI / 180;
 
-export async function createGoogleTiles({ key, lat, lon, camera, renderer, scene, calibrateAt, clip, onStatus, onReady }) {
+export async function createGoogleTiles({ key, lat, lon, camera, renderer, scene, calibrateAt, clip, onStatus, onReady, quality = {} }) {
   const [{ TilesRenderer }, plugins, { DRACOLoader }] = await Promise.all([
     import('3d-tiles-renderer'),
     import('3d-tiles-renderer/plugins'),
@@ -21,7 +21,19 @@ export async function createGoogleTiles({ key, lat, lon, camera, renderer, scene
   tiles.registerPlugin(new GLTFExtensionsPlugin({ dracoLoader: draco }));
   // ENU com +y para cima: leste = +x, norte = -z (mesmo sistema da maquete)
   tiles.registerPlugin(new ReorientationPlugin({ lat: lat * D2R, lon: lon * D2R, height: 0, up: '+y', recenter: true }));
-  tiles.errorTarget = 4;
+  // erro de tela tolerado (px): 6 na qualidade alta já é nítido; 10–16 nas máquinas fracas
+  // reduz muito a quantidade de tiles baixados e desenhados
+  tiles.errorTarget = quality.tilesError ?? 6;
+  // ?et=N força o erro de tela (para comparar qualidade × volume); __tiles fica exposto para os testes
+  const QS = new URLSearchParams(location.search);
+  if (QS.has('et')) tiles.errorTarget = +QS.get('et');
+  window.__tiles = tiles;
+  let castShadows = quality.tilesShadow ?? true;
+  let lastActivity = performance.now();
+  const bump = () => { lastActivity = performance.now(); };
+  tiles.addEventListener('load-model', bump);
+  tiles.addEventListener('tile-visibility-change', bump);
+  tiles.addEventListener('dispose-model', bump);
   tiles.setCamera(camera);
   tiles.setResolutionFromRenderer(camera, renderer);
 
@@ -35,7 +47,7 @@ export async function createGoogleTiles({ key, lat, lon, camera, renderer, scene
       o.material = new THREE.MeshStandardMaterial({ map: old.map, roughness: 0.95, metalness: 0 });
       if (clip) applyClip(o.material, clip);
       old.dispose();
-      o.castShadow = true;
+      o.castShadow = castShadows;
       o.receiveShadow = true;
     });
   });
@@ -45,6 +57,7 @@ export async function createGoogleTiles({ key, lat, lon, camera, renderer, scene
   // (leste +x, norte -z). Conferido por raycast: o mar fica a leste do lote.
   holder.rotation.y = Math.PI;
   holder.add(tiles.group);
+  holder.visible = false; // só aparece calibrado (antes disso o entorno simplificado segue na tela)
   scene.add(holder);
 
   let loaded = 0, failed = false, calibrated = false, lastOffset = null, stable = 0;
@@ -80,6 +93,7 @@ export async function createGoogleTiles({ key, lat, lon, camera, renderer, scene
     holder.position.y = offset;
     if (stable >= 2) {
       calibrated = true;
+      holder.visible = true;
       onStatus?.('Entorno fotorrealista ativo · dados do mapa © Google');
       onReady?.();
     }
@@ -147,6 +161,14 @@ export async function createGoogleTiles({ key, lat, lon, camera, renderer, scene
   return {
     tiles, holder, survey, snapshot,
     get calibrated() { return calibrated; },
+    // ainda chegando tiles (ou em transição de fade): a cena precisa continuar sendo redesenhada
+    get busy() { return tiles.loadProgress < 1 || performance.now() - lastActivity < 900; },
+    setQuality(q) {
+      tiles.errorTarget = q.tilesError;
+      castShadows = q.tilesShadow;
+      tiles.group.traverse(o => { if (o.isMesh) o.castShadow = castShadows; });
+      bump();
+    },
     update() {
       if (!calibrated && loaded > 20 && ++frame % 30 === 0) calibrate();
       camera.updateMatrixWorld();

@@ -9,16 +9,30 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
-import { SITE, PROPERTY } from './data.js';
-import { TERRAIN } from './terrain.js';
-import { buildApogeo, ORIENT, floorY } from './building.js';
 import { buildContext, SEA_LEVEL } from './context.js';
 import { sunPosition, sunVector, localToDate, sunTimes, fmtHour, compassName, TZ_OFFSET_H } from './sun.js';
 import { SunAnalyzer } from './analysis.js';
 import { CONFIG } from './config.js';
 import { facadeTextures } from './facade.js';
-import { PROJECT } from './projects/apogeo.js';
 import { InteriorTour } from './interior.js';
+
+// medições de desempenho (abertura, primeiro quadro, entorno do Google) — lidas pelo teste automático
+const PERF = window.__perf = { t0: performance.now(), marks: {}, longTasks: 0, longTaskMs: 0 };
+const perfMark = k => { if (!(k in PERF.marks)) PERF.marks[k] = Math.round(performance.now()); };
+try {
+  new PerformanceObserver(l => { for (const e of l.getEntries()) { PERF.longTasks++; PERF.longTaskMs += Math.max(0, e.duration - 50); } }).observe({ type: 'longtask', buffered: true });
+} catch (e) { /* navegador sem longtask */ }
+perfMark('module');
+
+// empreendimento: <html data-project="..."> escolhe o descritor em js/projects/<id>/index.js
+const PROJECT_ID = document.documentElement.dataset.project || 'apogeo';
+const PROJECT = (await import(`./projects/${PROJECT_ID}/index.js`)).default;
+const { SITE, PROPERTY, TERRAIN, ORIENT, floorY } = PROJECT;
+const LS = k => PROJECT.id + '.' + k; // chaves do localStorage por empreendimento
+const SEA = SITE.seaLevel ?? SEA_LEVEL; // nível do mar relativo ao térreo do empreendimento
+const ROOMS = PROJECT.rooms || { word: 'suítes', title: 'Suítes' };
+document.querySelector('.brand-name').textContent = PROPERTY.name;
+perfMark('project');
 
 // ======================================================================
 // Utilidades
@@ -37,10 +51,11 @@ const priceNum = s => parseFloat(String(s).replace(/[^\d,]/g, '').replace(',', '
 const brl = n => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const brlShort = n => 'R$ ' + (n / 1e6).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' mi';
 const isAvail = u => /dispon/i.test(u.status);
+const sideNormal = s => new THREE.Vector3(s === '+x' ? 1 : s === '-x' ? -1 : 0, 0, s === '-z' ? -1 : s === '+z' ? 1 : 0);
 const floorOf = name => Math.floor(parseInt(name, 10) / 100);
 const fmtDur = min => { const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? `${h}h${m ? String(m).padStart(2, '0') : ''}` : `${m}min`; };
 const fmtDate = iso => iso.split('-').reverse().join('/');
-const IMG = n => `assets/img/${n}.jpg`;
+const IMG = n => `${PROJECT.imgBase}${n}.jpg`;
 const WA_NUMBER = '+5527998485769';
 const waLink = msg => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
 const PLAN_BY_AREA = PROJECT.planImages;
@@ -70,9 +85,35 @@ const state = {
 // ======================================================================
 const stage = $('stage');
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+// ----------------------------------------------------------------------
+// Qualidade adaptativa: alta (igual à versão de referência) → média → leve.
+// O nível inicial vem da placa de vídeo e do processador; depois o monitor de quadros por segundo
+// desce um nível (ou reduz a resolução interna) se a máquina não acompanhar. ?q=alta|media|leve força.
+// ----------------------------------------------------------------------
+const QUALITY = {
+  alta: { name: 'alta', maxDpr: 2, msaa: 4, gtao: true, gtaoSamples: 16, shadow: 4096, soft: true, tilesError: 8, tilesShadow: true, minScale: 0.8 },
+  media: { name: 'media', maxDpr: 1.25, msaa: 4, gtao: true, gtaoSamples: 8, shadow: 2048, soft: true, tilesError: 20, tilesShadow: true, minScale: 0.75 },
+  leve: { name: 'leve', maxDpr: 1, msaa: 2, gtao: false, gtaoSamples: 8, shadow: 2048, soft: false, tilesError: 28, tilesShadow: false, minScale: 0.65 },
+};
+const QORDER = ['alta', 'media', 'leve'];
+function detectQuality() {
+  const forced = new URLSearchParams(location.search).get('q');
+  if (QUALITY[forced]) return { q: forced, why: 'forçado' };
+  let gpu = '';
+  try { const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); gpu = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : ''; } catch (e) { /* ok */ }
+  const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 8;
+  const mobile = matchMedia('(pointer: coarse)').matches && innerWidth < 1000;
+  if (/swiftshader|llvmpipe|software|microsoft basic/i.test(gpu)) return { q: 'leve', why: 'GPU por software', gpu };
+  if (/intel.*(hd graphics|uhd graphics|iris\(tm\) graphics [56]\d\d)|mali|adreno \(tm\) [3-6]|powervr|gma/i.test(gpu) || cores <= 4 || mem <= 4 || mobile) return { q: 'media', why: 'GPU integrada ou poucos núcleos', gpu };
+  return { q: 'alta', why: 'GPU dedicada/Apple', gpu };
+}
+const QDET = detectQuality();
+let QUAL = QUALITY[QDET.q], renderScale = 1;
+PERF.quality = QUAL.name; PERF.gpu = QDET.gpu;
+renderer.setPixelRatio(Math.min(devicePixelRatio, QUAL.maxDpr));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = QUAL.soft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
 renderer.toneMapping = THREE.AgXToneMapping;
 renderer.toneMappingExposure = 1.0;
 stage.appendChild(renderer.domElement);
@@ -94,18 +135,21 @@ controls.screenSpacePanning = false;
 // ======================================================================
 // Entorno + edifício
 // ======================================================================
+perfMark('preContext');
 const world = buildContext(SITE, TERRAIN, renderer);
+perfMark('context');
 scene.add(world.group);
 
-const apogeo = buildApogeo(PROPERTY.units);
+const apogeo = PROJECT.build(PROPERTY.units);
+perfMark('building');
 const [ux, uz] = SITE.ux;
 apogeo.group.rotation.y = Math.atan2(-uz, ux);
 apogeo.group.position.set(SITE.front[0], 0, SITE.front[1]);
 scene.add(apogeo.group);
 apogeo.group.updateMatrixWorld(true);
 const L2W = (x, y, z) => apogeo.group.localToWorld(new THREE.Vector3(x, y, z));
-const LOT_CENTER = L2W(-42, 0, 0);
-const TOWER_C = L2W(-66, 0, 5);
+const LOT_CENTER = L2W(PROJECT.lot.center[0], 0, PROJECT.lot.center[1]);
+const TOWER_C = L2W(PROJECT.lot.tower[0], 0, PROJECT.lot.tower[1]);
 const unitMeshes = apogeo.unitMeshes;
 const unitByName = new Map(unitMeshes.map(m => [m.userData.unit.name, m]));
 
@@ -138,7 +182,7 @@ function updateEnv(dir, force) {
 const sunLight = new THREE.DirectionalLight(0xffffff, 3);
 sunLight.castShadow = true;
 function setShadowQuality(hq) {
-  const s = hq ? 4096 : 2048;
+  const s = hq ? QUAL.shadow : 2048;
   sunLight.shadow.mapSize.set(s, s);
   sunLight.shadow.map?.dispose(); sunLight.shadow.map = null;
 }
@@ -171,12 +215,13 @@ scene.add(stars);
 
 // pós-processamento (bloom só à noite)
 // render em HDR com MSAA 4x + oclusão de ambiente (GTAO) + bloom noturno
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(256, 256, { type: THREE.HalfFloatType, samples: 4 }));
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(256, 256, { type: THREE.HalfFloatType, samples: QUAL.msaa }));
 composer.addPass(new RenderPass(scene, camera));
 const gtao = new GTAOPass(scene, camera, 256, 256);
 gtao.output = GTAOPass.OUTPUT.Default;
 gtao.blendIntensity = 0.85;
-gtao.updateGtaoMaterial({ radius: 3.5, distanceExponent: 1.6, thickness: 2.5, scale: 1.2, samples: 16 });
+gtao.updateGtaoMaterial({ radius: 3.5, distanceExponent: 1.6, thickness: 2.5, scale: 1.2, samples: QUAL.gtaoSamples });
+gtao.enabled = QUAL.gtao;
 gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
 composer.addPass(gtao);
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0, 0.55, 0.82);
@@ -285,17 +330,17 @@ function nearestOnRoad(name, seed) {
 }
 {
   const place = (text, x, z, y = 4, cls = 'lbl') => { const l = label(text, cls); l.position.set(x, world.heightAt(x, z) + y, z); labelsGroup.add(l); };
-  const gv = nearestOnRoad('Avenida Antônio Gil Veloso', [10, 70]); if (gv) place('Av. Antônio Gil Veloso', gv[0], gv[1]);
-  const lb = nearestOnRoad('Rua Lúcio Bacelar', [-100, 40]); if (lb) place('Rua Lúcio Bacelar', lb[0], lb[1]);
-  const gr = nearestOnRoad('Rua Gastão Roubach', [-60, -40]); if (gr) place('Rua Gastão Roubach', gr[0], gr[1]);
-  place('Oceano Atlântico', 260, 120, 2, 'lbl big');
-  place('Praia da Costa', 50, 160, 3, 'lbl big');
-  // ponto mais alto do relevo → morro
-  let mi = 0; TERRAIN.h.forEach((h, i) => { if (h > TERRAIN.h[mi]) mi = i; });
-  const n = TERRAIN.n, step = TERRAIN.size / (n - 1);
-  const mx = -TERRAIN.size / 2 + (mi % n) * step, mz = -TERRAIN.size / 2 + Math.floor(mi / n) * step;
-  place(`Morro do Moreno · ${Math.round(TERRAIN.h[mi] - SEA_LEVEL)} m`, mx, mz, 12, 'lbl big');
-  const ap = label('Apogeo Residences', 'lbl apogeo'); ap.position.copy(TOWER_C).setY(apogeo.height + 8); labelsGroup.add(ap);
+  const L = PROJECT.labels || {};
+  for (const r of L.roads || []) { const p = nearestOnRoad(r.road, r.seed); if (p) place(r.text || r.road, p[0], p[1]); }
+  for (const pl of L.places || []) place(pl.text, pl.x, pl.z, pl.y ?? 3, 'lbl big');
+  if (L.peak) {
+    // ponto mais alto do relevo → morro
+    let mi = 0; TERRAIN.h.forEach((h, i) => { if (h > TERRAIN.h[mi]) mi = i; });
+    const n = TERRAIN.n, step = TERRAIN.size / (n - 1);
+    const mx = -TERRAIN.size / 2 + (mi % n) * step, mz = -TERRAIN.size / 2 + Math.floor(mi / n) * step;
+    place(`${L.peak} · ${Math.round(TERRAIN.h[mi] - SEA)} m`, mx, mz, 12, 'lbl big');
+  }
+  const ap = label(PROPERTY.name, 'lbl apogeo'); ap.position.copy(TOWER_C).setY(apogeo.height + 8); labelsGroup.add(ap);
 }
 
 // etiquetas de preço das unidades disponíveis (clicáveis), na varanda principal de cada unidade
@@ -305,7 +350,7 @@ function buildPins() {
   for (const m of unitMeshes) {
     const u = m.userData.unit; if (!isAvail(u)) continue;
     const side = m.userData.view.side;
-    const n = side === '+x' ? new THREE.Vector3(1, 0, 0) : side === '-z' ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(0, 0, 1);
+    const n = sideNormal(side);
     n.applyQuaternion(q);
     const eye = apogeo.group.localToWorld(new THREE.Vector3(...m.userData.view.eye));
     const el = document.createElement('button');
@@ -385,10 +430,11 @@ function updateSun() {
   world.water.material.uniforms.waterColor.value.setRGB(lerp(0.01, 0.05, day), lerp(0.04, 0.3, day), lerp(0.08, 0.38, day));
 
   // luzes da noite
-  if (world.windows) { world.windows.visible = night > 0.03; world.windows.userData.material.emissiveIntensity = 1.6 * night; }
+  if (world.windows) { world.windows.visible = night > 0.03 && world.neighbors.visible; world.windows.userData.material.emissiveIntensity = 1.6 * night; }
   world.bulbMat.emissiveIntensity = 4 * night;
   Object.values(tours).forEach(t => { t.setNight(night); t.setDay(smooth(-2, 10, el), warm); });
   state.night = night;
+  apogeo.onNight?.(night);
 
   sunMarker.position.copy(tmpDir).multiplyScalar(PATH_R).add(LOT_CENTER);
   sunMarker.visible = el > -1;
@@ -447,7 +493,7 @@ function applyUnitColors() {
     }
     mat.color.copy(col); mat.emissive.copy(emi); mat.emissiveIntensity = ei; mat.opacity = op; mat.metalness = metal; mat.roughness = 1;
     // Realista: só as janelas acendem à noite; Disponibilidade: a unidade inteira acende
-    mat.emissiveMap = state.colorMode === 'real' ? FT.emissiveMap : FT.white;
+    mat.emissiveMap = state.colorMode === 'real' ? (m.userData.emissiveMap || FT.emissiveMap) : FT.white;
     m.userData.baseEmissive = mat.emissive.clone(); m.userData.baseEI = ei;
   }
   renderLegend();
@@ -504,16 +550,16 @@ function renderAvailability() {
   const units = PROPERTY.units;
   const av = units.filter(isAvail).sort((a, b) => priceNum(a.price) - priceNum(b.price));
   $('availLead').innerHTML = `<b>${av.length} de ${units.length}</b> unidades disponíveis · a partir de <b>${brlShort(priceNum(av[0].price))}</b>`;
-  $('extractDate').textContent = '15/10/2026';
+  $('extractDate').textContent = PROJECT.extracted || '';
   $('availList').innerHTML = av.map(u => {
     const f = floorOf(u.name), m = unitByName.get(u.name);
     const dup = m?.userData.floors.length > 1 ? ' · duplex' : '';
     const tour = hasRealTour(u.name) ? '<span class="tour-badge">Tour 3D</span>' : '';
-    return `<button class="avail-row" data-u="${u.name}"><span class="avail-num">${u.name}</span><span class="avail-meta">${f}º andar${dup}<br>${Math.round(areaNum(u.area))} m² · ${u.bedrooms} suítes</span><span class="avail-price">${brlShort(priceNum(u.price))}${tour}</span></button>`;
+    return `<button class="avail-row" data-u="${u.name}"><span class="avail-num">${u.name}</span><span class="avail-meta">${f}º andar${dup}<br>${Math.round(areaNum(u.area))} m² · ${u.bedrooms} ${ROOMS.word}</span><span class="avail-price">${brlShort(priceNum(u.price))}${tour}</span></button>`;
   }).join('');
-  const notes = { 15: 'Superior do duplex 1401', 8: 'Lazer · praia suspensa', 0: 'Térreo · lobbies' };
+  const notes = PROJECT.floorNotes || {};
   let html = '';
-  for (let f = 15; f >= 0; f--) {
+  for (let f = PROJECT.floors; f >= 0; f--) {
     const us = units.filter(u => floorOf(u.name) === f);
     html += `<div class="stack-row"><span class="stack-n">${f === 0 ? 'T' : f + 'º'}</span><div class="stack-cells">`;
     if (!us.length) html += `<span class="cell note">${notes[f] || ''}</span>`;
@@ -547,8 +593,8 @@ function openCompare() {
       ${row('Preço', c => cell(c, brlShort(c.price), bPrice))}
       ${row('R$/m²', c => cell(c, brl(c.ppm), bPpm))}
       ${row('Área privativa', c => cell(c, Math.round(c.area) + ' m²', bArea))}
-      ${row('Suítes', c => `<td>${c.u.bedrooms}</td>`)}
-      ${row('Tipo', c => `<td>${c.m.userData.floors.length > 1 ? 'Duplex' : (c.m.userData.tower ? 'Torre' : 'Base')}</td>`)}
+      ${row(ROOMS.title, c => `<td>${c.u.bedrooms}</td>`)}
+      ${row('Tipo', c => `<td>${c.m.userData.typeShort || (c.m.userData.floors.length > 1 ? 'Duplex' : (c.m.userData.tower ? 'Torre' : 'Base'))}</td>`)}
       ${row('Sol', c => `<td>${c.v.icon} ${c.v.label}</td>`)}
       ${row('Sol hoje', c => cell(c, fmtDur(c.r.total), bSun))}
       ${row('Sol no inverno', c => cell(c, fmtDur(c.w.total), bWin))}
@@ -587,6 +633,7 @@ function selectUnit(m, fly) {
 }
 
 function unitTypeLabel(m) {
+  if (PROJECT.unitType) return PROJECT.unitType(m);
   const u = m.userData.unit, f = m.userData.floors;
   if (u.name === '101' || u.name === '102') return 'Duplex garden (1º/2º)';
   if (f.length > 1) return `Duplex (${f[0]}º/${f[1]}º)`;
@@ -648,8 +695,8 @@ function renderUnitPanel() {
     <div class="specs">
       <div><span>Andar</span>${fl}</div>
       <div><span>Área</span>${Math.round(area)} m²</div>
-      <div><span>Suítes</span>${u.bedrooms}</div>
-      <div><span>Tipo</span>${m.userData.floors.length > 1 ? 'Duplex' : (m.userData.tower ? 'Torre' : 'Base')}</div>
+      <div><span>${ROOMS.title}</span>${u.bedrooms}</div>
+      <div><span>Tipo</span>${m.userData.typeShort || (m.userData.floors.length > 1 ? 'Duplex' : (m.userData.tower ? 'Torre' : 'Base'))}</div>
     </div>
     ${!hasTour && a && !plan ? `<div class="tour-soon"><b>Planta e tour 3D sob consulta</b><span>A incorporadora ainda não publicou a planta desta unidade. O tour interno com a planta oficial entra assim que ela for divulgada.</span>${illus ? `<button class="btn ghost small" id="btnIllus">Ver ambientação ilustrativa</button>` : ''}</div>` : ''}
     ${hasTour ? `<button class="btn tour-btn wide" id="btnTour"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 21V9l8-6 8 6v12h-6v-7h-4v7z" fill="currentColor"/></svg>Entrar no apartamento</button>` : ''}
@@ -723,18 +770,19 @@ function setOrbitLimits(unitView) {
 }
 function preset(name) {
   exitWalk(); setOrbitLimits(false); hideHint();
+  const v = PROJECT.presets.find(x => x.id === name); if (!v) return;
   const C = LOT_CENTER.clone();
-  const T = C.clone().setY(24);
-  if (name === 'geral') animateCamera(C.clone().addScaledVector(bearingVec(38), 175).setY(70), T);
-  if (name === 'praia') { const p = C.clone().addScaledVector(bearingVec(101), 125); p.y = world.heightAt(p.x, p.z) + 1.7; animateCamera(p, C.clone().setY(30)); }
-  if (name === 'fundos') { const p = C.clone().addScaledVector(bearingVec(281), 60).addScaledVector(bearingVec(191), 25); p.y = 1.7 + Math.max(0, world.heightAt(p.x, p.z)); animateCamera(p, C.clone().setY(28)); }
-  if (name === 'aerea') animateCamera(C.clone().add(new THREE.Vector3(0, 380, 0.5)), C.clone());
+  if (v.top) { animateCamera(C.clone().add(new THREE.Vector3(0, v.top, 0.5)), C.clone()); return; }
+  const p = C.clone().addScaledVector(bearingVec(v.bearing), v.dist);
+  if (v.side) p.addScaledVector(bearingVec(v.side[0]), v.side[1]);
+  p.y = v.ground ? 1.7 + Math.max(0, world.heightAt(p.x, p.z)) : v.h;
+  animateCamera(p, C.clone().setY(v.ty));
 }
 function flyToUnit(m) {
   exitWalk(); setOrbitLimits(false); hideHint();
   const c = m.localToWorld(m.userData.center.clone());
   const side = m.userData.view.side;
-  const n = side === '+x' ? new THREE.Vector3(1, 0, 0) : side === '-z' ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(0, 0, 1);
+  const n = sideNormal(side);
   const q = new THREE.Quaternion(); apogeo.group.getWorldQuaternion(q); n.applyQuaternion(q);
   const pos = c.clone().addScaledVector(n, 105).add(new THREE.Vector3(0, 30, 0)).addScaledVector(new THREE.Vector3(-n.z, 0, n.x), 40);
   animateCamera(pos, c);
@@ -743,7 +791,7 @@ function enterUnitView(m) {
   exitWalk();
   const eye = apogeo.group.localToWorld(new THREE.Vector3(...m.userData.view.eye));
   const side = m.userData.view.side;
-  const n = side === '+x' ? new THREE.Vector3(1, 0, 0) : side === '-z' ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(0, 0, 1);
+  const n = sideNormal(side);
   const q = new THREE.Quaternion(); apogeo.group.getWorldQuaternion(q); n.applyQuaternion(q);
   setOrbitLimits(true);
   animateCamera(eye, eye.clone().addScaledVector(n, 0.6), 1.6);
@@ -781,7 +829,7 @@ function updateWalk(dt) {
   if (walk.keys.has('KeyA') || walk.keys.has('ArrowLeft')) mv.sub(r);
   if (mv.lengthSq()) camera.position.addScaledVector(mv.normalize(), sp);
   const gy = world.heightAt(camera.position.x, camera.position.z);
-  camera.position.y = lerp(camera.position.y, Math.max(gy, SEA_LEVEL + 0.5) + 1.7, 0.3);
+  camera.position.y = lerp(camera.position.y, Math.max(gy, SEA + 0.5) + 1.7, 0.3);
   const look = new THREE.Vector3(-Math.sin(walk.yaw) * Math.cos(walk.pitch), Math.sin(walk.pitch), -Math.cos(walk.yaw) * Math.cos(walk.pitch));
   camera.lookAt(camera.position.clone().add(look));
 }
@@ -1070,22 +1118,23 @@ function initUI() {
     $('colorMode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
     applyUnitColors();
   }));
+  $('presets').innerHTML = PROJECT.presets.map(v => `<button data-p="${v.id}">${v.label}</button>`).join('');
   $('presets').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { preset(b.dataset.p); $('layers').classList.add('hidden'); $('layersBtn').setAttribute('aria-expanded', false); }));
   $('tPath').addEventListener('change', e => { sunPathGroup.visible = e.target.checked; });
   $('tSeasons').addEventListener('change', e => { seasonGroup.visible = e.target.checked; });
   $('tNeighbors').addEventListener('change', e => { world.neighbors.visible = e.target.checked; if (world.windows) world.windows.visible = e.target.checked && state.night > 0.03; });
   $('tLabels').addEventListener('change', e => { labelsGroup.visible = e.target.checked; });
-  $('tHQ').addEventListener('change', e => { setShadowQuality(e.target.checked); gtao.enabled = e.target.checked; });
+  $('tHQ').addEventListener('change', e => { setShadowQuality(e.target.checked); gtao.enabled = e.target.checked && QUAL.gtao; markDirty(); });
   // barra do sol recolhível (fechada por padrão)
   const setSunOpen = open => {
     $('sunbar').classList.toggle('open', open);
     $('view-maquete').classList.toggle('sun-open', open);
     $('sunExpand').title = open ? 'Recolher controles de sol' : 'Mostrar controles de sol e data';
-    try { localStorage.setItem('apogeo.sunOpen', open ? '1' : '0'); } catch (e) { /* ok */ }
+    try { localStorage.setItem(LS('sunOpen'), open ? '1' : '0'); } catch (e) { /* ok */ }
     if (state.sun) updateSunHud();
   };
   let sunOpen = false;
-  try { sunOpen = localStorage.getItem('apogeo.sunOpen') === '1'; } catch (e) { /* ok */ }
+  try { sunOpen = localStorage.getItem(LS('sunOpen')) === '1'; } catch (e) { /* ok */ }
   setSunOpen(sunOpen);
   $('sunExpand').addEventListener('click', () => setSunOpen(!$('sunbar').classList.contains('open')));
   // menu de vistas e camadas
@@ -1133,19 +1182,18 @@ async function enablePhotoTiles(key) {
   $('tilesStatus').textContent = 'Carregando biblioteca…';
   try {
     const { createGoogleTiles } = await import('./tiles.js');
-    const front = L2W(8, 0, 0);
+    const front = L2W(PROJECT.lot.calibrate[0], 0, PROJECT.lot.calibrate[1]);
     photo = await createGoogleTiles({
-      key, lat: LAT, lon: LON, camera, renderer, scene, calibrateAt: front,
-      clip: { inverse: apogeo.group.matrixWorld.clone().invert(), min: [-84.5, -14.5], max: [0.5, 14.5] },
+      key, lat: LAT, lon: LON, camera, renderer, scene, calibrateAt: front, quality: QUAL,
+      clip: { inverse: apogeo.group.matrixWorld.clone().invert(), min: PROJECT.lot.clip.min, max: PROJECT.lot.clip.max },
       onStatus: (t, err) => { $('tilesStatus').textContent = t; if (err) disablePhotoTiles(true); },
-      onReady: () => useGoogleForSun(),
+      onReady: () => { perfMark('tilesReady'); setContextVisible(false); markDirty(1500); if (BAKE_MODE || !analyzer.bake) useGoogleForSun(); },
     });
   } catch (e) {
     console.error(e);
     $('tilesStatus').textContent = 'Falha ao carregar o entorno 3D: ' + e.message;
     return;
   }
-  setContextVisible(false);
   $('tilesOn').classList.add('hidden'); $('tilesOff').classList.remove('hidden');
 }
 // A análise de insolação passa a usar a geometria real do Google (prédios, árvores, relevo próximo).
@@ -1171,7 +1219,8 @@ async function useGoogleForSun() {
     googleOcc = mesh;
     analyzer.setOccluders([...ownOccluders, mesh], 'google');
     console.info(`[insolação] geometria Google: ${tris.toLocaleString('pt-BR')} triângulos, BVH em ${Math.round(performance.now() - t0)} ms`);
-    setSunSource('google');
+    setSunSource('google'); perfMark('sunGoogle');
+    if (BAKE_MODE) { bakeSun(); return; }
     runAnalysisAll();
   } catch (e) {
     console.warn('[insolação] mantendo OSM:', e);
@@ -1180,12 +1229,49 @@ async function useGoogleForSun() {
     sunSourceBusy = false;
   }
 }
+// ---------- insolação pré-calculada (js/projects/<id>/sun.json) ----------
+// ?bake=1 recalcula com a geometria do Google e deixa o JSON em window.__bake (o script de build salva o arquivo).
+const BAKE_MODE = new URLSearchParams(location.search).has('bake');
+async function loadSunBake() {
+  if (BAKE_MODE || !PROJECT.sunBake) return;
+  try {
+    const r = await fetch(PROJECT.sunBake);
+    if (!r.ok) return;
+    analyzer.useBake(await r.json());
+    perfMark('sunBake');
+    setSunSource('google');
+    runAnalysisAll();
+  } catch (e) { console.warn('[insolação] sem pré-cálculo:', e); }
+}
+function bakeDays() {
+  const out = new Set(['03-20', '06-21', '09-22', '12-21']);
+  for (let i = 0; i < 365; i += 3) out.add(new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(5, 10));
+  return [...out].sort();
+}
+async function bakeSun() {
+  const days = bakeDays(), units = {}, t0 = performance.now();
+  analyzer.baking = true;
+  for (const m of unitMeshes) {
+    const name = m.userData.unit.name, d = {};
+    let sides;
+    for (const day of days) {
+      const e = analyzer.encodeUnitDay(m, '2026-' + day);
+      sides = e.sides; d[day] = e.rec;
+    }
+    units[name] = { sides, d };
+    window.__bakeProgress = Object.keys(units).length + '/' + unitMeshes.length;
+    await new Promise(r => setTimeout(r, 0));
+  }
+  analyzer.baking = false;
+  window.__bake = { v: 1, step: 10, source: 'google-3d-tiles', created: new Date().toISOString().slice(0, 10), tris: googleOcc?.userData.tris || 0, days, units };
+  console.info(`[insolação] pré-cálculo pronto em ${Math.round((performance.now() - t0) / 1000)} s`);
+}
 function setSunSource(src, msg) {
   state.sunSource = src;
   const el = $('sunSource');
   if (el) el.textContent = msg || ({
     loading: 'Insolação: carregando prédios reais do Google…',
-    google: `Insolação calculada com prédios reais do Google (${Math.round((googleOcc?.userData.tris || 0) / 1000)} mil triângulos)`,
+    google: analyzer.bake && !googleOcc ? 'Insolação calculada com os prédios reais do Google (pré-calculada para o ano todo)' : `Insolação calculada com prédios reais do Google (${Math.round((googleOcc?.userData.tris || 0) / 1000)} mil triângulos)`,
     osm: 'Insolação calculada com prédios do OpenStreetMap (alturas estimadas)',
   })[src];
   if (state.selected) renderUnitPanel();
@@ -1213,13 +1299,13 @@ function setContextVisible(v) {
 
 function initOnboarding() {
   let seen = false;
-  try { seen = localStorage.getItem('apogeo.onboarded') === '1'; } catch (e) { /* ok */ }
+  try { seen = localStorage.getItem(LS('onboarded')) === '1'; } catch (e) { /* ok */ }
   if (seen) return;
   const el = document.createElement('div');
   el.className = 'onboard';
-  el.innerHTML = `<b>Bem-vindo ao Apogeo</b><span>Arraste para girar a maquete. Clique numa unidade (ou na lista à esquerda) para ver preço, sol e entrar no apartamento.</span><button type="button">Entendi</button>`;
+  el.innerHTML = `<b>Bem-vindo ao ${PROJECT.short}</b><span>Arraste para girar a maquete. Clique numa unidade (ou na lista à esquerda) para ver preço, sol e entrar no apartamento.</span><button type="button">Entendi</button>`;
   $('view-maquete').appendChild(el);
-  const close = () => { el.remove(); try { localStorage.setItem('apogeo.onboarded', '1'); } catch (e) { /* ok */ } };
+  const close = () => { el.remove(); try { localStorage.setItem(LS('onboarded'), '1'); } catch (e) { /* ok */ } };
   el.querySelector('button').onclick = close;
   renderer.domElement.addEventListener('pointerdown', () => setTimeout(close, 2500), { once: true });
 }
@@ -1257,8 +1343,8 @@ const lotFrontWorld = (dist, lateral = 0) => ({ x: SITE.front[0] + ux * dist + S
 // Street View: link direto para a calçada em frente ao empreendimento, olhando para o prédio
 function svLink(ll, heading) { return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll.lat},${ll.lng}&heading=${heading}&pitch=0&fov=90`; }
 function initSvLink() {
-  const p = lotFrontWorld(10);
-  $('svLink').href = svLink(toLatLon(p.x, p.z), 281);
+  const p = lotFrontWorld(PROJECT.streetView.dist);
+  $('svLink').href = svLink(toLatLon(p.x, p.z), PROJECT.streetView.heading);
 }
 // Alguns hosts (como a página publicada no claude.ai) bloqueiam iframes via CSP: o mapa vira um cartão com links.
 const embed = { blocked: false };
@@ -1279,7 +1365,7 @@ function initMapCard() {
   $('mapCard').innerHTML = `<h3 style="margin-top:0">${PROPERTY.name}</h3>
     <div>${PROPERTY.address} · ${PROPERTY.neighborhood.name}</div><div class="muted">${PROPERTY.city} / ES</div>
     <div class="actions"><a class="btn" target="_blank" rel="noreferrer" href="https://www.google.com/maps/dir/?api=1&destination=${LAT},${LON}">Como chegar</a>
-    <a class="btn ghost" target="_blank" rel="noreferrer" href="https://www.google.com/maps/@${LAT},${LON},250a,35y,281h,60t/data=!3m1!1e3">Google Earth 3D ↗</a></div>`;
+    <a class="btn ghost" target="_blank" rel="noreferrer" href="https://www.google.com/maps/@${LAT},${LON},250a,35y,${PROJECT.earthHeading}h,60t/data=!3m1!1e3">Google Earth 3D ↗</a></div>`;
 }
 
 // galeria + lightbox
@@ -1292,7 +1378,7 @@ function showLb() { $('lbImg').src = IMG(lb.list[lb.i]); $('lbCap').textContent 
 function initGallery() {
   const cats = PROPERTY.categories;
   const all = [], caps = [];
-  const order = ['Principal', 'Fachada', 'Área Comum'];
+  const order = PROJECT.galleryOrder;
   let html = '<h2 class="gallery-title">Galeria</h2><p class="muted">Imagens e plantas publicadas pela incorporadora (perspectivas ilustrativas).</p>';
   for (const name of order) {
     const c = cats.find(x => x.name === name); if (!c) continue;
@@ -1300,6 +1386,7 @@ function initGallery() {
     c.images.forEach(im => { html += `<img loading="lazy" src="${IMG(im)}" data-i="${all.length}" alt="${name}">`; all.push(im); caps.push(name); });
     html += '</div>';
   }
+  if (PROJECT.galleryExtra) { html += '<h3>Mais imagens</h3><div class="grid">'; PROJECT.galleryExtra.forEach(e => { html += `<img loading="lazy" src="${IMG(e.img)}" data-i="${all.length}" alt="${e.title}" title="${e.title}">`; all.push(e.img); caps.push(e.title); }); html += '</div>'; }
   html += '<h3>Plantas</h3><div class="grid plans">';
   cats.filter(c => !order.includes(c.name)).forEach(c => c.images.forEach(im => { html += `<img loading="lazy" src="${IMG(im)}" data-i="${all.length}" alt="${c.name}" title="${c.name}">`; all.push(im); caps.push('Planta · ' + c.name); }));
   html += '</div>';
@@ -1314,12 +1401,21 @@ function initGallery() {
     if (e.code === 'ArrowRight') $('lbNext').click(); if (e.code === 'ArrowLeft') $('lbPrev').click(); if (e.code === 'Escape') $('lbClose').click();
   });
 }
+// estágio da obra (quando a construtora publica): barras de avanço + fotos datadas
+function obraHTML() {
+  const O = PROJECT.obra; if (!O) return '';
+  const bars = O.status.map(([k, v]) => `<div class="obra-row"><span>${k}</span><i><b style="width:${v}%"></b></i><em>${v}%</em></div>`).join('');
+  const photos = O.photos.map(p => `<img loading="lazy" src="${PROJECT.imgBase}obra/${p}.jpg" data-obra="${p}" alt="Obra em ${fmtDate(p.slice(0, 10))}"><span>${fmtDate(p.slice(0, 10))}</span>`).map(h => `<figure>${h}</figure>`).join('');
+  return `<section class="obra card"><h3 style="margin-top:0">Acompanhe a obra</h3>
+    <p class="muted">Estágio informado pela construtora em ${O.updated}. <a href="${O.source}" target="_blank" rel="noreferrer">Ver no site da construtora ↗</a></p>
+    <div class="obra-bars">${bars}</div><div class="obra-photos">${photos}</div></section>`;
+}
 function initAbout() {
   const P = PROPERTY;
   const units = P.units, av = units.filter(isAvail);
   const areas = units.map(u => areaNum(u.area));
   $('about').innerHTML = `
-    <img class="hero" src="${IMG('c7_0')}" alt="Apogeo Residences">
+    <img class="hero" src="${IMG(PROJECT.hero)}" alt="${P.name}">
     <div class="cols"><div>
       <h1>${P.name}</h1>
       <p class="muted">${P.address} · ${P.neighborhood.name} · ${P.city}/ES · ${P.readiness === 'Planta' ? 'Na planta' : P.readiness}</p>
@@ -1331,12 +1427,13 @@ function initAbout() {
       <div class="card facts">
         <div><b>${units.length}</b><span>unidades</span></div>
         <div><b>${av.length}</b><span>disponíveis</span></div>
-        <div><b>15</b><span>pavimentos</span></div>
+        <div><b>${PROJECT.floors}</b><span>pavimentos</span></div>
         <div><b>${Math.round(Math.min(...areas))}–${Math.round(Math.max(...areas))}</b><span>m² privativos</span></div>
       </div>
       <div class="card"><h3 style="margin-top:0">Construtora</h3><b>${P.company.name}</b><p class="muted" style="font-size:12.5px">${P.company.about}</p></div>
       <p class="fine">Fonte: <a href="${P.source}" target="_blank" rel="noreferrer">vempravimo.com.br</a>. Maquete 3D ilustrativa, baseada nas perspectivas, plantas e tabela de unidades; entorno do OpenStreetMap/Google e relevo SRTM.</p>
     </div></div>
+    ${obraHTML()}
     <div class="gallery" id="gallery"></div>`;
 }
 
@@ -1354,9 +1451,60 @@ addEventListener('resize', onResize);
 
 const clock = new THREE.Clock();
 const camDir = new THREE.Vector3();
-function frame() {
+// Renderização sob demanda: com a cena parada (sem arrastar, sem animação, sem tiles chegando)
+// não redesenhamos — a GPU e a CPU ficam livres para carregar o entorno.
+let dirtyUntil = 0;
+function markDirty(ms = 700) { dirtyUntil = Math.max(dirtyUntil, performance.now() + ms); }
+for (const ev of ['pointermove', 'pointerdown', 'pointerup', 'wheel', 'keydown', 'input', 'change', 'click', 'touchmove']) addEventListener(ev, () => markDirty(), { passive: true, capture: true });
+addEventListener('resize', () => markDirty(1000));
+controls.addEventListener('change', () => markDirty());
+function needsRender() {
+  if (performance.now() < dirtyUntil) return true;
+  if (camAnim || state.playing || state.tour || state.selected || state.hovered) return true;
+  if (photo && photo.busy) return true;
+  return false;
+}
+// governador de quadros: mede o fps enquanto está renderizando e ajusta resolução/nível
+const gov = { frames: 0, t: 0, low: 0, high: 0 };
+function governor(now) {
+  // aba em segundo plano ou pausa longa (navegador estrangula o rAF): não é sinal de máquina fraca
+  if (document.hidden || !gov.last || now - gov.last > 250) { gov.t = now; gov.frames = 0; gov.last = now; return; }
+  gov.last = now;
+  if (!gov.t) { gov.t = now; return; }
+  gov.frames++;
+  const dt = now - gov.t;
+  if (dt < 2000) return;
+  const fps = gov.frames * 1000 / dt;
+  gov.frames = 0; gov.t = now; PERF.fps = Math.round(fps);
+  if (performance.now() < 5000) return; // ignora a fase de abertura (compilação de shaders)
+  if (fps < 26) { gov.low++; gov.high = 0; } else if (fps > 52) { gov.high++; gov.low = 0; } else { gov.low = gov.high = 0; }
+  if (gov.low >= 2) {
+    gov.low = 0;
+    if (renderScale > QUAL.minScale + 0.01) setRenderScale(Math.max(QUAL.minScale, renderScale - 0.1));
+    else { const i = QORDER.indexOf(QUAL.name); if (i < QORDER.length - 1) applyQuality(QORDER[i + 1]); }
+  } else if (gov.high >= 3 && renderScale < 1) { gov.high = 0; setRenderScale(Math.min(1, renderScale + 0.1)); }
+}
+function setRenderScale(s) {
+  renderScale = Math.round(s * 100) / 100; PERF.renderScale = renderScale;
+  const pr = Math.min(devicePixelRatio, QUAL.maxDpr) * renderScale;
+  renderer.setPixelRatio(pr); composer.setPixelRatio(pr); onResize(); markDirty();
+}
+function applyQuality(name) {
+  QUAL = QUALITY[name]; PERF.quality = name; PERF.qualitySteps = (PERF.qualitySteps || 0) + 1;
+  console.info('[qualidade]', name);
+  renderer.shadowMap.type = QUAL.soft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+  setShadowQuality($('tHQ').checked);
+  gtao.enabled = QUAL.gtao && $('tHQ').checked;
+  gtao.updateGtaoMaterial({ samples: QUAL.gtaoSamples });
+  for (const rt of [composer.renderTarget1, composer.renderTarget2]) { rt.samples = QUAL.msaa; rt.dispose(); }
+  scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
+  photo?.setQuality(QUAL);
+  setRenderScale(1);
+}
+function frame(now) {
   requestAnimationFrame(frame);
-  tick();
+  if (!PERF.marks.firstFrame || needsRender()) { tick(); governor(now); PERF.renders = (PERF.renders || 0) + 1; }
+  else { gov.t = 0; gov.frames = 0; gov.last = 0; photo?.update(); }
 }
 function tick() {
   if (!$('view-maquete').classList.contains('active')) return;
@@ -1399,6 +1547,7 @@ function tick() {
   $('needle').style.transform = `rotate(${-bearingOf(camDir)}deg)`;
   composer.render();
   labelRenderer.render(scene, camera);
+  if (!PERF.marks.firstFrame) perfMark('firstFrame');
 }
 
 // ======================================================================
@@ -1406,17 +1555,20 @@ function tick() {
 // ======================================================================
 $('brandSub').textContent = `${PROPERTY.neighborhood.name} · ${PROPERTY.city}/ES · ${PROPERTY.priceRange.replace('A partir de', 'a partir de')}`;
 renderAvailability();
+perfMark('preUI');
 initUI(); initTourUI(); initTabs(); initOnboarding(); initSvLink(); initMapCard(); initAbout(); initGallery();
 buildSunPath(); buildSeasonPaths();
 onResize();
-camera.position.copy(LOT_CENTER).addScaledVector(bearingVec(125), 420).setY(260);
-controls.target.copy(LOT_CENTER).setY(20);
+{ const s = PROJECT.camera.start; camera.position.copy(LOT_CENTER).addScaledVector(bearingVec(s.bearing), s.dist).setY(s.h); controls.target.copy(LOT_CENTER).setY(s.ty); }
 updateSun();
 updateEnv(tmpDir.clone(), true);
+perfMark('env');
 preset('geral');
 frame();
+perfMark('frameCalled');
 setTimeout(() => $('loading').classList.add('done'), 400);
 runAnalysisAll();
+loadSunBake();
 buildPins();
 // link direto para uma unidade: ...#901 abre a ficha dela
 function openFromHash() {

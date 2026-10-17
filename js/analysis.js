@@ -62,6 +62,7 @@ export class SunAnalyzer {
   }
 
   analyzeUnit(mesh, isoDay) {
+    if (this.bake && !this.baking) { const r = this.bakedUnit(mesh, isoDay); if (r) return r; }
     const key = mesh.uuid + ':' + isoDay;
     if (this.cache.has(key)) return this.cache.get(key);
     const { steps, times } = this.daySteps(isoDay);
@@ -73,19 +74,77 @@ export class SunAnalyzer {
       n: new THREE.Vector3(...s.n).applyQuaternion(this._q),
     }));
     const sides = [...new Set(samples.map(s => s.side))];
-    const timeline = [];         // por passo: fração das amostras ensolaradas
-    const sideMinutes = Object.fromEntries(sides.map(s => [s, 0]));
-    const sideRanges = Object.fromEntries(sides.map(s => [s, []]));
-    let morning = 0, afternoon = 0;
-    for (const st of steps) {
+    const perStep = steps.map(st => {
       let lit = 0; const litSides = new Set();
       for (const s of samples) {
         if (s.n.dot(st.dir) < 0.04) continue;
         if (this.occluded(s.p, st.dir)) continue;
         lit++; litSides.add(s.side);
       }
-      const frac = lit / samples.length;
-      timeline.push({ h: st.h, frac, sides: [...litSides] });
+      return { frac: lit / samples.length, sides: [...litSides] };
+    });
+    const res = summarize(steps, times, sides, perStep);
+    this.cache.set(key, res);
+    return res;
+  }
+
+  // ---------- insolação pré-calculada ----------
+  // O cálculo com a geometria real do Google (centenas de milhares de triângulos) é feito uma vez,
+  // offline, e publicado num JSON pequeno. No navegador do visitante só lemos o resultado:
+  // nada de levantamento de tiles nem BVH na abertura.
+  useBake(bake) {
+    this.bake = bake; this.source = 'google';
+    this.bakeDays = bake.days.map(d => [d, doy(d)]);
+    for (const k of [...this.cache.keys()]) if (!k.startsWith('steps:')) this.cache.delete(k);
+  }
+  bakedUnit(mesh, isoDay) {
+    const B = this.bake, u = B && B.units[mesh.userData.unit.name];
+    if (!u) return null;
+    const key = mesh.uuid + ':' + isoDay;
+    if (this.cache.has(key)) return this.cache.get(key);
+    const t = doy(isoDay.slice(5));
+    let best = this.bakeDays[0], bd = 999;
+    for (const d of this.bakeDays) { const dd = Math.min(Math.abs(d[1] - t), 365 - Math.abs(d[1] - t)); if (dd < bd) { bd = dd; best = d; } }
+    const [start, hex] = u.d[best[0]];
+    const { steps, times } = this.daySteps(isoDay);
+    const perStep = steps.map(st => {
+      const i = Math.round((Math.round(st.h * 60) - start) / B.step);
+      const b = i >= 0 && i * 2 < hex.length ? parseInt(hex.substr(i * 2, 2), 16) : 0;
+      return { frac: (b >> 4) / 15, sides: u.sides.filter((_, k) => b & (1 << k)) };
+    });
+    const res = summarize(steps, times, u.sides, perStep);
+    this.cache.set(key, res);
+    return res;
+  }
+  // gera o registro pré-calculado de uma unidade num dia (usado pela página em modo ?bake)
+  encodeUnitDay(mesh, isoDay) {
+    const r = this.analyzeUnit(mesh, isoDay);
+    const sides = [...new Set(mesh.userData.samples.map(s => s.side))];
+    const tl = r.timeline;
+    if (!tl.length) return { sides, rec: [0, ''] };
+    const start = Math.round(tl[0].h * 60);
+    let hex = '';
+    for (const t of tl) {
+      let b = Math.round(t.frac * 15) << 4;
+      t.sides.forEach(sd => { b |= 1 << sides.indexOf(sd); });
+      hex += b.toString(16).padStart(2, '0');
+    }
+    hex = hex.replace(/(00)+$/, '');
+    return { sides, rec: [start, hex] };
+  }
+}
+
+const doy = mmdd => { const [m, d] = mmdd.split('-').map(Number); return Math.round((Date.UTC(2026, m - 1, d) - Date.UTC(2026, 0, 1)) / 864e5); };
+
+function summarize(steps, times, sides, perStep) {
+    const timeline = [];         // por passo: fração das amostras ensolaradas
+    const sideMinutes = Object.fromEntries(sides.map(s => [s, 0]));
+    const sideRanges = Object.fromEntries(sides.map(s => [s, []]));
+    let morning = 0, afternoon = 0;
+    steps.forEach((st, i) => {
+      const { frac, sides: litList } = perStep[i];
+      const litSides = new Set(litList);
+      timeline.push({ h: st.h, frac, sides: litList });
       if (litSides.size) {
         if (st.h < times.noon) morning += STEP_MIN; else afternoon += STEP_MIN;
       }
@@ -95,9 +154,6 @@ export class SunAnalyzer {
         if (last && Math.abs(last[1] - st.h) <= STEP_MIN / 60 + 1e-6) last[1] = st.h + STEP_MIN / 60;
         else r.push([st.h, st.h + STEP_MIN / 60]);
       }
-    }
-    const res = { timeline, morning, afternoon, total: morning + afternoon, sideMinutes, sideRanges, times };
-    this.cache.set(key, res);
-    return res;
-  }
+    });
+    return { timeline, morning, afternoon, total: morning + afternoon, sideMinutes, sideRanges, times };
 }

@@ -221,7 +221,7 @@ export class InteriorTour {
     this.probeRT = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
     this.probe = new THREE.CubeCamera(0.05, 400, this.probeRT);
     root.add(this.probe);
-    const gloss = { porcelain: 0.8, marble: 0.8, stone: 0.8, mirror: 1.3, glass: 0.55, steel: 0.9, water: 0.9, screen: 1.0, glassBlack: 1.0, porcelainWhite: 0.8 };
+    const gloss = { porcelain: 0.8, marble: 0.8, stone: 0.8, mirror: 1.3, glass: 0.55, steel: 0.9, water: 0.9, screen: 0.35, glassBlack: 1.0, porcelainWhite: 0.8 };
     const nameOf = new Map(Object.entries(this.mats).map(([k, v]) => [v, k]));
     root.traverse(o => {
       if (!o.isMesh) return;
@@ -305,7 +305,8 @@ export class InteriorTour {
     for (const line of (P.glass || [])) this.glassLine(line);
     this.windowLights(P.glass || [], P, lv);
     for (const c of P.curtains || []) this.curtain(c);
-    this.railing(P.outline);
+    // guarda-corpo de vidro: no contorno inteiro (varandas do Apogeo) ou só nas linhas indicadas (P.rails)
+    if (P.rails) for (const r of P.rails) this.railing(r, true); else this.railing(P.outline);
     if (P.poolDeck) box(P.poolDeck, 0, 0.42, mats.oak);
     if (P.pool) {
       const [x0, y0, x1, y1] = P.pool;
@@ -428,9 +429,9 @@ export class InteriorTour {
     }
   }
 
-  railing(poly) {
+  railing(poly, open = false) {
     const { X, Z, mats } = this;
-    for (let i = 0; i < poly.length; i++) {
+    for (let i = 0; i < poly.length - (open ? 1 : 0); i++) {
       const p0 = poly[i], p1 = poly[(i + 1) % poly.length];
       const a = new THREE.Vector3(X(p0[0]), 0, Z(p0[1])), b = new THREE.Vector3(X(p1[0]), 0, Z(p1[1]));
       const L = a.distanceTo(b); if (L < 0.05) continue;
@@ -530,7 +531,7 @@ export class InteriorTour {
       }
       case 'bench': RB(R.x0, R.z0, R.x1, R.z1, 0.08, 0.46, mats.fabricDark, 0.05); B(R.x0 + 0.05, R.z0 + 0.05, R.x1 - 0.05, R.z1 - 0.05, 0, 0.08, mats.black); break;
       case 'nightstand':
-        if (f.round) { Cyl(P.x, P.z, 0.23, 0, 0.5, mats.oak, 32); this.lamp(P.x, P.z, 0.5); }
+        if (f.round || !R) { Cyl(P.x, P.z, 0.23, 0, 0.5, mats.oak, 32); this.lamp(P.x, P.z, 0.5); }
         else { RB(R.x0, R.z0, R.x1, R.z1, 0.1, 0.52, mats.oak, 0.015); B(R.x0 + 0.03, R.z0 + 0.03, R.x1 - 0.03, R.z1 - 0.03, 0, 0.1, mats.black); this.lamp((R.x0 + R.x1) / 2, (R.z0 + R.z1) / 2, 0.52); }
         break;
       case 'rug':

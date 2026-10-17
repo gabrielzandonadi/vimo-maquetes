@@ -1,0 +1,7 @@
+{
+  "name": "vimo-maquete-tools",
+  "private": true,
+  "type": "module",
+  "description": "Ferramentas: teste de desempenho (bench.mjs) e pré-cálculo de insolação (bake.mjs). Usam o Google Chrome instalado.",
+  "dependencies": { "puppeteer-core": "23.11.1" }
+}
