@@ -75,10 +75,34 @@ function textures() {
     cladding(g, rowTop(1), '#ab9a84', 'rgba(90,78,64,.4)');
     glass(g, door, rowTop(1), 0.25);
   });
+  // à noite: luz quente mais forte no alto do vão, cortina de linho filtrando parte dela
+  const litRect = (g, o, top, curtain) => {
+    const x0 = X(o.x0), x1 = X(o.x1), y0 = top + H - o.y1 * py, y1 = top + H - o.y0 * py;
+    const gr = g.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, '#fff0d2'); gr.addColorStop(0.55, '#ffd49a'); gr.addColorStop(1, '#c98a4a');
+    g.fillStyle = gr; g.fillRect(x0, y0, x1 - x0, y1 - y0);
+    for (let x = x0; x < x0 + (x1 - x0) * curtain; x += 5) { g.fillStyle = `rgba(0,0,0,${0.35 + 0.15 * Math.sin(x * 0.7)})`; g.fillRect(x, y0, 5, y1 - y0); }
+    g.fillStyle = '#000'; const nm = Math.max(1, Math.round((o.x1 - o.x0) / 1.1));
+    for (let i = 0; i <= nm; i++) { const x = x0 + (x1 - x0) * i / nm; g.fillRect(x - 2.5, y0, 5, y1 - y0); }
+  };
   const mask = canvas(W, HH, g => {
-    g.fillStyle = '#000'; g.fillRect(0, 0, W, HH); g.fillStyle = '#ffd9a0';
-    g.fillRect(X(win.x0), rowTop(0) + H - win.y1 * py, X(win.x1) - X(win.x0), (win.y1 - win.y0) * py);
-    g.fillRect(X(door.x0), rowTop(1) + H - door.y1 * py, X(door.x1) - X(door.x0), (door.y1 - door.y0) * py);
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, HH);
+    litRect(g, win, rowTop(0), 0.3); litRect(g, door, rowTop(1), 0.25);
+  });
+  // relevo: juntas do revestimento levemente fundas, vãos recuados e caixilhos salientes
+  const bump = canvas(W, HH, g => {
+    g.fillStyle = 'rgb(170,170,170)'; g.fillRect(0, 0, W, HH);
+    g.strokeStyle = 'rgb(120,120,120)'; g.lineWidth = 2;
+    for (const top of [rowTop(0), rowTop(1)]) {
+      for (let m = 0; m <= MOD_W + 0.01; m += 0.75) { g.beginPath(); g.moveTo(X(m), top); g.lineTo(X(m), top + H); g.stroke(); }
+      for (let m = 0; m <= MOD_H; m += 0.7) { g.beginPath(); g.moveTo(0, top + H - m * py); g.lineTo(W, top + H - m * py); g.stroke(); }
+    }
+    for (const [o, top] of [[win, rowTop(0)], [door, rowTop(1)]]) {
+      const x0 = X(o.x0), x1 = X(o.x1), y0 = top + H - o.y1 * py, y1 = top + H - o.y0 * py;
+      g.fillStyle = 'rgb(205,205,205)'; g.fillRect(x0 - 7, y0 - 7, x1 - x0 + 14, y1 - y0 + 14);
+      g.fillStyle = 'rgb(60,60,60)'; g.fillRect(x0, y0, x1 - x0, y1 - y0);
+      g.fillStyle = 'rgb(110,110,110)'; const nm = Math.max(1, Math.round((o.x1 - o.x0) / 1.1));
+      for (let i = 0; i <= nm; i++) { const x = x0 + (x1 - x0) * i / nm; g.fillRect(x - 2.5, y0, 5, y1 - y0); }
+    }
   });
   const rough = canvas(W, HH, g => {
     g.fillStyle = 'rgb(0,215,0)'; g.fillRect(0, 0, W, HH); g.fillStyle = 'rgb(0,30,0)';
@@ -112,7 +136,7 @@ function textures() {
     for (let y = 2; y < 128; y += 10) { const gr = g.createLinearGradient(0, y, 0, y + 7); gr.addColorStop(0, '#8d7f6d'); gr.addColorStop(1, '#5d5246'); g.fillStyle = gr; g.fillRect(0, y, 128, 7); }
   });
   const white = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1); white.needsUpdate = true;
-  TX = { louver: tex(louver), map: tex(color), emissiveMap: tex(mask), roughnessMap: tex(rough, false), slats: tex(slats), stone: tex(stone), deck: tex(deck), white };
+  TX = { louver: tex(louver), bump: tex(bump, false), map: tex(color), emissiveMap: tex(mask), roughnessMap: tex(rough, false), slats: tex(slats), stone: tex(stone), deck: tex(deck), white };
   return TX;
 }
 
@@ -174,7 +198,7 @@ function makeMaterials() {
 }
 function unitMaterial() {
   const T = textures();
-  return new THREE.MeshStandardMaterial({ map: T.map, emissiveMap: T.emissiveMap, roughnessMap: T.roughnessMap, roughness: 1, metalness: 0.05, transparent: true });
+  return new THREE.MeshStandardMaterial({ map: T.map, emissiveMap: T.emissiveMap, roughnessMap: T.roughnessMap, bumpMap: T.bump, bumpScale: 3, roughness: 1, metalness: 0.05, transparent: true });
 }
 
 function tree(mats, h, blossom) {
@@ -202,6 +226,10 @@ function palm(mats, h) {
   return g;
 }
 
+// laje-tipo: avança 35 cm além das fachadas longas; cantos das pontas arredondados
+const SLAB_PTS = [[XE + 0.15, ZN - 0.35], [XE + 0.15, ZS + 0.35], [-18.3, ZS + 0.35], [-18.3, 10.22], [-41.44, 10.22], [-41.44, ZS + 0.35], [XW - 0.15, ZS + 0.35], [XW - 0.15, ZN - 0.35], [-41.44, ZN - 0.35], [-41.44, -8.22], [-18.3, -8.22], [-18.3, ZN - 0.35]];
+const SLAB_R = [1.5, 1.5, 0, 0, 0, 0, 1.5, 1.5, 0, 0, 0, 0];
+
 // ---------------------------------------------------------------- construção
 export function buildHomero(units) {
   const mats = makeMaterials();
@@ -211,10 +239,25 @@ export function buildHomero(units) {
     const m = new THREE.Mesh(geo, mat); m.castShadow = cast; m.receiveShadow = receive; m.userData.occluder = occlude; parent.add(m); return m;
   };
   const box = (x0, x1, y0, y1, z0, z1) => { const g = new THREE.BoxGeometry(Math.abs(x1 - x0), y1 - y0, Math.abs(z1 - z0)); g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); return g; };
-  const extrude = (pts, y0, h) => {
-    let v = pts.map(([x, z]) => new THREE.Vector2(x, z));
-    if (!THREE.ShapeUtils.isClockWise(v)) v = v.reverse();
-    const g = new THREE.ExtrudeGeometry(new THREE.Shape(v), { depth: h, bevelEnabled: false });
+  // contorno → Shape, com raio opcional por vértice (cantos arredondados das pontas da torre)
+  const shapeOf = (pts, radii) => {
+    let P = pts.map(p => [...p]), Rr = radii ? [...radii] : P.map(() => 0);
+    if (!THREE.ShapeUtils.isClockWise(P.map(([x, z]) => new THREE.Vector2(x, z)))) { P = P.reverse(); Rr = Rr.reverse(); }
+    const sh = new THREE.Shape(), n = P.length;
+    for (let i = 0; i < n; i++) {
+      const p = P[i], prev = P[(i - 1 + n) % n], next = P[(i + 1) % n], r = Rr[i] || 0;
+      if (!r) { i ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1]); continue; }
+      const d1 = Math.hypot(prev[0] - p[0], prev[1] - p[1]), d2 = Math.hypot(next[0] - p[0], next[1] - p[1]), k = Math.min(r, d1 / 2.05, d2 / 2.05);
+      const a = [p[0] + (prev[0] - p[0]) / d1 * k, p[1] + (prev[1] - p[1]) / d1 * k], b = [p[0] + (next[0] - p[0]) / d2 * k, p[1] + (next[1] - p[1]) / d2 * k];
+      i ? sh.lineTo(a[0], a[1]) : sh.moveTo(a[0], a[1]);
+      sh.quadraticCurveTo(p[0], p[1], b[0], b[1]);
+    }
+    sh.closePath(); return sh;
+  };
+  const extrude = (pts, y0, h, radii, hole) => {
+    const sh = shapeOf(pts, radii);
+    if (hole) sh.holes.push(new THREE.Path(shapeOf(hole.pts, hole.radii).getPoints(6)));
+    const g = new THREE.ExtrudeGeometry(sh, { depth: h, bevelEnabled: false, curveSegments: 6 });
     g.rotateX(Math.PI / 2); g.translate(0, y0 + h, 0); return g;
   };
   const panel = (a, b, y0, h, t = 0.02) => { // placa vertical entre dois pontos (x,z)
@@ -287,8 +330,12 @@ export function buildHomero(units) {
   for (let f = TOWER_FLOORS[0]; f <= TOWER_FLOORS[1] + 1; f++) {
     const y = floorY(f), floorGroup = new THREE.Group(); floorGroup.name = 'pav-' + f; group.add(floorGroup);
     // laje do pavimento (sobressai 15 cm das fachadas laterais) + lajes das varandas das pontas
-    const slabPts = [[XE + 0.15, ZN - 0.15], [XE + 0.15, ZS + 0.15], [-18.3, ZS + 0.15], [-18.3, 10.02], [-41.44, 10.02], [-41.44, ZS + 0.15], [XW - 0.15, ZS + 0.15], [XW - 0.15, ZN - 0.15], [-41.44, ZN - 0.15], [-41.44, -8.02], [-18.3, -8.02], [-18.3, ZN - 0.15]];
-    add(extrude(slabPts, y - SLAB, SLAB), mats.slab, { parent: floorGroup });
+    add(extrude(SLAB_PTS, y - SLAB, SLAB, SLAB_R), mats.slab, { parent: floorGroup });
+    // pilastras em fendi entre as colunas das fachadas longas (ritmo vertical da perspectiva)
+    if (f <= TOWER_FLOORS[1]) for (const x of [-18.3, -29.87, -41.44]) for (const [z, d] of [[-7.87, -1], [9.87, 1]]) {
+      const zf = (x === -29.87) ? z : (d < 0 ? ZN : ZS);
+      add(box(x - 0.32, x + 0.32, y, y + FLOOR_H - SLAB, zf, zf + d * 0.42), mats.fin, { parent: floorGroup });
+    }
     if (f > TOWER_FLOORS[1]) break; // laje de cobertura
     for (const dir of [1, -1]) {
       // varanda das pontas em "bumerangue": mais funda no centro, com friso de LED sob a borda
@@ -327,7 +374,9 @@ export function buildHomero(units) {
         shell = odd ? [[x0, ZN], [x1, ZN], [x1, ZMID], [x0, ZMID]] : [[x0, ZMID], [x1, ZMID], [x1, ZS], [x0, ZS]];
       }
       const h = FLOOR_H - SLAB;
-      const geo = extrude(shell, y, h);
+      // canto externo arredondado nas colunas de ponta (01/02 na Humberto Serrano, 07/08 na Romero Botelho)
+      const radii = plan ? null : shell.map(([x, z]) => (Math.abs(z - ZN) < 0.01 || Math.abs(z - ZS) < 0.01) && (Math.abs(x - XE) < 0.01 || Math.abs(x - XW) < 0.01) ? 1.35 : 0);
+      const geo = extrude(shell, y, h, radii);
       atlasUV(geo, y, plan ? 'none' : 'x');
       const mesh = new THREE.Mesh(geo, unitMaterial());
       mesh.castShadow = mesh.receiveShadow = true;
@@ -357,24 +406,26 @@ export function buildHomero(units) {
         unit: u, floors: [f], sides, box: b, tower: false, occluder: true, poly: true,
         typeShort: `Coluna ${String(c).padStart(2, '0')}`,
         emissiveMap: textures().emissiveMap,
-        lit: Math.random() < 0.55,
+        lit: true, litI: 0.5 + Math.random() * 0.45, litColor: new THREE.Color().setHSL(0.09 + Math.random() * 0.04, 0.85, 0.62 + Math.random() * 0.12),
       };
       unitMeshes.push(mesh);
     }
   }
-  add(mergeGeometries(finGeo), mats.fin);
-  const led = add(mergeGeometries(ledGeo), mats.led, { cast: false, occlude: false });
-  led.name = 'led';
   // cobertura: platibanda branca alta (como na perspectiva) e casa de máquinas sobre o núcleo
   {
     const y = TOP;
-    const pp = [[XE + 0.15, ZN - 0.15], [XE + 0.15, ZS + 0.15], [XW - 0.15, ZS + 0.15], [XW - 0.15, ZN - 0.15]], walls = [];
-    for (let i = 0; i < 4; i++) walls.push(panel(pp[i], pp[(i + 1) % 4], y, 1.7, 0.25));
-    add(mergeGeometries(walls), mats.slab);
+    const outer = [[XE + 0.15, ZN - 0.35], [XE + 0.15, ZS + 0.35], [XW - 0.15, ZS + 0.35], [XW - 0.15, ZN - 0.35]];
+    const inner = [[XE - 0.15, ZN - 0.05], [XE - 0.15, ZS + 0.05], [XW + 0.15, ZS + 0.05], [XW + 0.15, ZN - 0.05]];
+    add(extrude(outer, y, 1.7, [1.5, 1.5, 1.5, 1.5], { pts: inner, radii: [1.2, 1.2, 1.2, 1.2] }), mats.slab);
+    // friso de LED no topo da platibanda (como na perspectiva)
+    for (let i = 0; i < 4; i++) { const a = outer[i], b = outer[(i + 1) % 4]; ledGeo.push(panel(a, b, y + 1.25, 0.05, 0.02)); }
     add(box(-21, -38, y, y + 4.2, -1.6, 3.6), mats.core);
     add(box(XE - 0.5, XW + 0.5, y + 0.02, y + 0.06, ZN + 0.3, ZS - 0.3), mats.roof, { cast: false });
   }
 
+  add(mergeGeometries(finGeo), mats.fin);
+  const led = add(mergeGeometries(ledGeo), mats.led, { cast: false, occlude: false });
+  led.name = 'led';
   // ======================= amostras de insolação e vistas =======================
   // amostras na linha do guarda-corpo das varandas, 1 m acima do piso
   unitMeshes.forEach(m => {

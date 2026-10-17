@@ -425,3 +425,38 @@ input[type=date] { background: var(--bg); border: 1px solid var(--border); color
 .obra-photos { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
 .obra-photos figure { margin: 0; flex: 0 0 auto; text-align: center; font-size: 11.5px; color: #6b7280; }
 .obra-photos img { height: 170px; width: auto; border-radius: 10px; display: block; margin-bottom: 4px; object-fit: cover; }
+.avail-ref { display: block; font-size: 11.5px; color: var(--gold-deep, #b9892f); font-weight: 600; letter-spacing: .02em; margin-bottom: 4px; text-transform: none; }
+
+/* ---------- tela de abertura ---------- */
+.splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: #0f1d3d; color: #fff; transition: opacity .7s ease, visibility .7s; padding: 16px; }
+.splash.done { opacity: 0; visibility: hidden; pointer-events: none; }
+.splash-bg { position: absolute; inset: 0; background-size: cover; background-position: center; filter: blur(3px) saturate(1.05); transform: scale(1.06); opacity: .55; animation: splashZoom 18s ease-out forwards; }
+.splash-bg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(15,29,61,.55) 0%, rgba(15,29,61,.82) 55%, rgba(15,29,61,.95) 100%); }
+@keyframes splashZoom { from { transform: scale(1.12); } to { transform: scale(1.02); } }
+.splash-card { position: relative; width: min(420px, 100%); text-align: center; display: grid; justify-items: center; gap: 6px; }
+.splash-logo { height: 34px; opacity: .95; margin-bottom: 10px; }
+.splash-name { font-family: KoHo, sans-serif; font-size: 26px; font-weight: 700; line-height: 1.15; text-wrap: balance; }
+.splash-sub { font-size: 13px; opacity: .75; margin-bottom: 6px; }
+.splash-building { width: 120px; height: 120px; margin: 4px 0 2px; }
+.sb-ground { fill: rgba(255,255,255,.35); }
+.sb-floors rect { fill: #f6c15a; transform-origin: 60px 104px; opacity: 0; animation: floorUp 2.8s ease-in-out infinite; animation-delay: calc(var(--i) * .22s); }
+@keyframes floorUp { 0% { opacity: 0; transform: translateY(8px); } 18%, 70% { opacity: 1; transform: none; fill: #f6c15a; } 85% { fill: #fff3d6; } 100% { opacity: 0; transform: none; } }
+.sb-sun { fill: #ffe39a; transform-origin: 60px 104px; animation: sunArc 5.6s linear infinite; filter: drop-shadow(0 0 6px rgba(255,214,120,.9)); }
+@keyframes sunArc { from { transform: rotate(-70deg); } to { transform: rotate(70deg); } }
+.splash-steps { list-style: none; padding: 0; margin: 6px 0 4px; display: grid; gap: 7px; text-align: left; font-size: 13.5px; }
+.splash-steps li { display: flex; align-items: center; gap: 10px; opacity: .55; transition: opacity .3s; }
+.splash-steps li.on, .splash-steps li.ok { opacity: 1; }
+.splash-steps i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); flex: 0 0 auto; position: relative; }
+.splash-steps li.on i { border-color: #f6c15a; border-top-color: transparent; animation: spin .9s linear infinite; }
+.splash-steps li.ok i { border-color: #f6c15a; background: #f6c15a; }
+.splash-steps li.ok i::after { content: ''; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid #192a56; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.splash-steps em { font-style: normal; color: #f6c15a; font-weight: 600; margin-left: 4px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.splash-bar { width: 100%; height: 6px; border-radius: 6px; background: rgba(255,255,255,.14); overflow: hidden; margin-top: 8px; }
+.splash-bar b { display: block; height: 100%; width: 6%; background: linear-gradient(90deg, #f6c15a, #ffe2a0); border-radius: 6px; transition: width .5s ease; position: relative; }
+.splash-bar b::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); animation: shimmer 1.4s linear infinite; }
+@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.splash-tip { font-size: 12px; opacity: .7; margin: 10px 0 0; max-width: 34ch; }
+.splash-skip { margin-top: 8px; background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.45); border-radius: 999px; padding: 7px 18px; font: inherit; font-size: 13px; cursor: pointer; }
+.splash-skip:hover { background: rgba(255,255,255,.1); }
+@media (prefers-reduced-motion: reduce) { .sb-floors rect, .sb-sun, .splash-bg, .splash-bar b::after { animation: none; opacity: 1; } }

@@ -151,6 +151,22 @@ const L2W = (x, y, z) => apogeo.group.localToWorld(new THREE.Vector3(x, y, z));
 const LOT_CENTER = L2W(PROJECT.lot.center[0], 0, PROJECT.lot.center[1]);
 const TOWER_C = L2W(PROJECT.lot.tower[0], 0, PROJECT.lot.tower[1]);
 const unitMeshes = apogeo.unitMeshes;
+
+// contorno do terreno do empreendimento: linha dourada discreta ao redor do lote
+const lotOutline = new THREE.Group(); lotOutline.name = 'lote'; scene.add(lotOutline);
+if (SITE.lot?.length >= 3) {
+  const P = SITE.lot, cx = P.reduce((a, p) => a + p[0], 0) / P.length, cz = P.reduce((a, p) => a + p[1], 0) / P.length;
+  const pts = P.map(([x, z]) => { const d = Math.hypot(x - cx, z - cz); return [x + (x - cx) / d * 1.1, z + (z - cz) / d * 1.1]; });
+  const mat = new THREE.MeshBasicMaterial({ color: 0xf6c15a, transparent: true, opacity: 0.92, toneMapped: false });
+  const geos = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const g = new THREE.BoxGeometry(L + 0.7, 0.16, 0.7);
+    g.rotateY(-Math.atan2(b[1] - a[1], b[0] - a[0])); g.translate((a[0] + b[0]) / 2, 0.4, (a[1] + b[1]) / 2);
+    geos.push(g);
+  }
+  import('three/addons/utils/BufferGeometryUtils.js').then(({ mergeGeometries }) => { lotOutline.add(new THREE.Mesh(mergeGeometries(geos), mat)); markDirty(); });
+}
 const unitByName = new Map(unitMeshes.map(m => [m.userData.unit.name, m]));
 
 // ======================================================================
@@ -355,7 +371,8 @@ function buildPins() {
     const eye = apogeo.group.localToWorld(new THREE.Vector3(...m.userData.view.eye));
     const el = document.createElement('button');
     el.className = 'pin';
-    el.innerHTML = `<b>${u.name}</b><span>${brlShort(priceNum(u.price))}</span>${hasRealTour(u.name) ? '<i title="Tour 3D disponível">3D</i>' : ''}`;
+    el.innerHTML = `<b>${u.name}</b>`;
+    el.title = `Unidade ${u.name} · ${brlShort(priceNum(u.price))}`;
     el.addEventListener('pointerdown', e => e.stopPropagation());
     el.addEventListener('click', e => { e.stopPropagation(); selectUnit(m, true); });
     const o = new CSS2DObject(el);
@@ -480,7 +497,7 @@ function applyUnitColors() {
     const u = m.userData.unit, mat = m.material;
     let col = C_REAL, emi = C_BLACK, ei = 0, op = 1, metal = 0.05;
     if (state.colorMode === 'real') {
-      if (m.userData.lit) { emi = C_LIT; ei = 0.7 * night; }
+      if (m.userData.lit !== false) { emi = m.userData.litColor || C_LIT; ei = (m.userData.litI ?? 0.7) * night; }
     } else if (state.colorMode === 'disp') {
       metal = 0.1;
       if (isAvail(u)) { col = C_AVAIL; emi = C_AVAIL; ei = 0.3 + 0.4 * night; op = 0.98; }
@@ -549,7 +566,10 @@ function runAnalysisAll() {
 function renderAvailability() {
   const units = PROPERTY.units;
   const av = units.filter(isAvail).sort((a, b) => priceNum(a.price) - priceNum(b.price));
-  $('availLead').innerHTML = `<b>${av.length} de ${units.length}</b> unidades disponíveis · a partir de <b>${brlShort(priceNum(av[0].price))}</b>`;
+  const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const [, mm, yy] = (PROJECT.extracted || '').split('/');
+  const ref = mm ? `${MESES[+mm - 1]} de ${yy}` : '';
+  $('availLead').innerHTML = `${ref ? `<span class="avail-ref">Tabela de ${ref} · vempravimo.com.br</span>` : ''}<b>${av.length} de ${units.length}</b> unidades disponíveis · a partir de <b>${brlShort(priceNum(av[0].price))}</b>`;
   $('extractDate').textContent = PROJECT.extracted || '';
   $('availList').innerHTML = av.map(u => {
     const f = floorOf(u.name), m = unitByName.get(u.name);
@@ -1122,7 +1142,18 @@ function initUI() {
   $('presets').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { preset(b.dataset.p); $('layers').classList.add('hidden'); $('layersBtn').setAttribute('aria-expanded', false); }));
   $('tPath').addEventListener('change', e => { sunPathGroup.visible = e.target.checked; });
   $('tSeasons').addEventListener('change', e => { seasonGroup.visible = e.target.checked; });
-  $('tNeighbors').addEventListener('change', e => { world.neighbors.visible = e.target.checked; if (world.windows) world.windows.visible = e.target.checked && state.night > 0.03; });
+  $('tNeighbors').addEventListener('change', e => {
+    const on = e.target.checked;
+    if (photo?.calibrated) {
+      // com o entorno do Google: desligar esconde a cidade fotorrealista e deixa só o relevo e o mar
+      photo.holder.visible = on;
+      for (const o of [world.ground, world.outer, world.water]) if (o) o.visible = !on;
+    } else {
+      world.neighbors.visible = on;
+      if (world.windows) world.windows.visible = on && state.night > 0.03;
+    }
+    markDirty();
+  });
   $('tLabels').addEventListener('change', e => { labelsGroup.visible = e.target.checked; });
   $('tHQ').addEventListener('change', e => { setShadowQuality(e.target.checked); gtao.enabled = e.target.checked && QUAL.gtao; markDirty(); });
   // barra do sol recolhível (fechada por padrão)
@@ -1161,6 +1192,36 @@ function initUI() {
   });
   if (innerWidth < 900) $('availPanel').classList.add('collapsed');
 }
+// ---------- tela de abertura ----------
+// Cobre a página até o entorno fotorrealista estar calibrado (ou 30 s, ou sem chave/erro).
+// A cena continua carregando por trás; o botão "Entrar agora" aparece depois de alguns segundos.
+const splash = { done: false, t0: performance.now(), hasKey: false, g: 0 };
+{
+  $('splashName').textContent = PROPERTY.name;
+  $('splashSub').textContent = `${PROPERTY.neighborhood.name} · ${PROPERTY.city}/ES`;
+  $('splashBg').style.backgroundImage = `url(${IMG(PROJECT.hero)})`;
+  $('splashSkip').addEventListener('click', () => splashFinish());
+}
+function splashStep(id, st) { const el = $(id); el.classList.toggle('on', st === 'on'); el.classList.toggle('ok', st === 'ok'); }
+function splashFinish() {
+  if (splash.done) return;
+  splash.done = true; PERF.splashMs = Math.round(performance.now() - splash.t0); perfMark('splashDone');
+  $('splashBar').style.width = '100%';
+  setTimeout(() => { $('splash').classList.add('done'); markDirty(1200); }, 350);
+}
+const splashTimer = setInterval(() => {
+  if (splash.done) { clearInterval(splashTimer); return; }
+  const el = performance.now() - splash.t0;
+  const model = !!PERF.marks.firstFrame, sun = !!PERF.marks.sunBake || !PROJECT.sunBake || analyzer.source === 'google';
+  splashStep('stModel', model ? 'ok' : 'on');
+  splashStep('stSun', sun ? 'ok' : model ? 'on' : '');
+  if (photo) splash.g = Math.max(splash.g, photo.calibrated ? 1 : Math.min(0.95, 0.55 * Math.min(1, (photo.tiles.stats?.loaded || 0) / 180) + 0.45 * Math.min(1, el / 11000)));
+  splashStep('stGoogle', photo?.calibrated ? 'ok' : (splash.hasKey ? 'on' : ''));
+  $('stGooglePct').textContent = splash.hasKey && !photo?.calibrated ? Math.round(splash.g * 100) + '%' : '';
+  $('splashBar').style.width = Math.round(100 * (0.12 * model + 0.08 * sun + (splash.hasKey ? 0.8 * splash.g : 0.8 * model))) + '%';
+  if (el > 6000) $('splashSkip').classList.remove('hidden');
+  if (photo?.calibrated || (!splash.hasKey && model && el > 900) || el > 30000) splashFinish();
+}, 200);
 // ---------- entorno fotorrealista (Google 3D Tiles) ----------
 let photo = null;
 function initPhotoTiles() {
@@ -1168,7 +1229,8 @@ function initPhotoTiles() {
   try { key = key || localStorage.getItem('apogeo.gmapsKey') || ''; } catch (e) { /* ok */ }
   $('tilesKey').value = key;
   // entorno fotorrealista sempre ativo: liga sozinho ao abrir, se houver chave configurada
-  if (key) setTimeout(() => enablePhotoTiles(key), 1200);
+  splash.hasKey = !!key;
+  if (key) setTimeout(() => enablePhotoTiles(key), 30);
   $('tilesOn').addEventListener('click', () => {
     const k = $('tilesKey').value.trim();
     if (!k) { $('tilesStatus').textContent = 'Informe uma chave com a Map Tiles API habilitada.'; return; }
@@ -1186,12 +1248,13 @@ async function enablePhotoTiles(key) {
     photo = await createGoogleTiles({
       key, lat: LAT, lon: LON, camera, renderer, scene, calibrateAt: front, quality: QUAL,
       clip: { inverse: apogeo.group.matrixWorld.clone().invert(), min: PROJECT.lot.clip.min, max: PROJECT.lot.clip.max },
-      onStatus: (t, err) => { $('tilesStatus').textContent = t; if (err) disablePhotoTiles(true); },
+      onStatus: (t, err) => { $('tilesStatus').textContent = t; if (err) { disablePhotoTiles(true); splashFinish(); } },
       onReady: () => { perfMark('tilesReady'); setContextVisible(false); markDirty(1500); if (BAKE_MODE || !analyzer.bake) useGoogleForSun(); },
     });
   } catch (e) {
     console.error(e);
     $('tilesStatus').textContent = 'Falha ao carregar o entorno 3D: ' + e.message;
+    splashFinish();
     return;
   }
   $('tilesOn').classList.add('hidden'); $('tilesOff').classList.remove('hidden');
@@ -1294,7 +1357,7 @@ function setContextVisible(v) {
   // a análise de insolação continua usando-o como geometria de obstrução.
   for (const o of [world.ground, world.outer, world.neighbors, world.water, world.palms, world.poles, world.bulbs]) if (o) o.visible = v;
   if (world.windows) world.windows.visible = v && state.night > 0.03;
-  $('tNeighbors').checked = v; $('tNeighbors').disabled = !v;
+  $('tNeighbors').checked = true;
 }
 
 function initOnboarding() {
