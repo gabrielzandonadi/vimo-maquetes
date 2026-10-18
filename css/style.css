@@ -388,6 +388,15 @@ input[type=date] { background: var(--bg); border: 1px solid var(--border); color
   background: rgba(255, 255, 255, .6); border: 1px solid rgba(255, 255, 255, .75); backdrop-filter: blur(12px) saturate(170%); -webkit-backdrop-filter: blur(12px) saturate(170%); }
 .tour-light button { border: 0; background: none; color: var(--navy); font-size: 12px; font-weight: 600; padding: 6px 11px; border-radius: 999px; }
 .tour-light button.on, .tour-light button:hover { background: var(--navy); color: var(--white); }
+/* recolhida: só o botão com a luz atual; aberta: as quatro opções */
+.tour-light .tl-toggle { display: inline-flex; align-items: center; gap: 6px; }
+.tour-light .tl-toggle i { font-style: normal; font-size: 12px; transition: transform .2s; }
+.tour-light .tl-toggle:hover { background: rgba(25,42,86,.08); color: var(--navy); }
+.tour-light button[data-h] { display: none; }
+.tour-light.open button[data-h] { display: inline-block; animation: tlIn .18s ease both; }
+.tour-light.open .tl-toggle i { transform: rotate(180deg); }
+.tour-light.open .tl-toggle span { display: none; }
+@keyframes tlIn { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: none; } }
 @media (max-width: 900px) { .tour-light { top: 128px; left: 16px; right: auto; } }
 
 /* unidade disponível ainda sem planta publicada */

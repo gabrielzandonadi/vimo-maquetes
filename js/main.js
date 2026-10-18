@@ -1006,11 +1006,18 @@ function drawTourMap() {
 }
 function setHour(h) {
   state.hour = h; $('time').value = h; updateSun();
-  document.querySelectorAll('#tourLight button').forEach(b => b.classList.toggle('on', Math.abs(+b.dataset.h - h) < 0.01));
+  let cur = null;
+  document.querySelectorAll('#tourLight button[data-h]').forEach(b => { const on = Math.abs(+b.dataset.h - h) < 0.01; b.classList.toggle('on', on); if (on) cur = b; });
+  const icon = { 8: '🌅', 12: '☀', 16.5: '🌇', 20: '🌙' };
+  $('tourLightCur').textContent = cur ? `${icon[+cur.dataset.h] || '☀'} ${cur.textContent}` : '☀ Luz do dia';
 }
+// barra de luz do tour: recolhida mostra só a opção atual; clicar expande Manhã/Meio-dia/Tarde/Noite
+function setTourLightOpen(open) { $('tourLight').classList.toggle('open', open); $('tourLightToggle').setAttribute('aria-expanded', open); }
 function initTourUI() {
   $('tourExit').addEventListener('click', exitTour);
-  $('tourLight').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { state.playing = false; $('play').textContent = '▶'; setHour(+b.dataset.h); }));
+  $('tourLight').querySelectorAll('button[data-h]').forEach(b => b.addEventListener('click', () => { state.playing = false; $('play').textContent = '▶'; setHour(+b.dataset.h); setTourLightOpen(false); }));
+  $('tourLightToggle').addEventListener('click', e => { e.stopPropagation(); setTourLightOpen(!$('tourLight').classList.contains('open')); });
+  addEventListener('pointerdown', e => { if (!$('tourLight').contains(e.target)) setTourLightOpen(false); });
   $('tourMap').addEventListener('click', e => {
     const tour = state.tour, map = $('tourMap')._map; if (!tour || !map) return;
     const r = $('tourMap').getBoundingClientRect();
