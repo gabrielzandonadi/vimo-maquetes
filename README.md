@@ -9,6 +9,9 @@ interno das unidades disponíveis. O mesmo motor atende a todos os empreendiment
 | `index.html` | Apogeo Residences (Javé) |
 | `homero.html` | Edifício Dr. Homero Tavares (Barbosa Barros) |
 
+Publicado em https://gabrielzandonadi.github.io/vimo-maquetes/ (Apogeo) e
+https://gabrielzandonadi.github.io/vimo-maquetes/homero.html. O endereço antigo (`/apogeo-3d/`) redireciona.
+
 ## Rodar
 
 ```bash
