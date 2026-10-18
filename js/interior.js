@@ -235,6 +235,11 @@ export class InteriorTour {
     });
     this.probeDirty = true;
     this.useLevel(0);
+    // luz noturna proporcional à área: as luminárias foram calibradas nos ambientes amplos do Apogeo
+    // (~30 m² por ponto de luz); em apartamentos compactos o mesmo valor estoura a imagem
+    let area = 0;
+    this.levels.forEach(L => { const sc = (L.scale || this.plan.scale) ** 2; for (const f of L.floors || []) area += Math.abs(polyArea(f.poly)) * sc; });
+    this.lightScale = Math.min(1, Math.max(0.22, area / Math.max(1, this.lights.length) / 30));
     return root;
   }
 
@@ -950,7 +955,8 @@ export class InteriorTour {
   }
   setNight(night) {
     this.probeDirty = true;
-    this.lights.forEach(l => { l.intensity = (l.userData.small ? 1.6 : 5) * night; });
+    const k = this.lightScale ?? 1;
+    this.lights.forEach(l => { l.intensity = (l.userData.small ? 1.6 : 5) * night * k; });
     if (this.mats) this.mats.shade.emissiveIntensity = 0.9 * night;
   }
   // luz do céu pelas janelas: forte de dia, quente no fim de tarde, apagada à noite
@@ -971,3 +977,5 @@ function inPoly(x, y, poly) {
   }
   return c;
 }
+
+function polyArea(p) { let a = 0; for (let i = 0, j = p.length - 1; i < p.length; j = i++) a += (p[j][0] + p[i][0]) * (p[j][1] - p[i][1]); return a / 2; }

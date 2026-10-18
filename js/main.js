@@ -433,11 +433,12 @@ function updateSun() {
   hemi.groundColor.setRGB(lerp(0.08, 0.55, day), lerp(0.07, 0.48, day), lerp(0.08, 0.4, day));
   moon.intensity = 0.45 * night;
   starMat.opacity = night * 0.9;
-  renderer.toneMappingExposure = lerp(1.6, 1.0, day) * (state.tour ? lerp(1.25, 1.08, day) : 1); // adaptação do olho em ambiente interno
+  // adaptação do olho: dentro do apartamento à noite as luminárias já iluminam — sem o ganho de exposição da maquete
+  renderer.toneMappingExposure = state.tour ? lerp(1.12, 1.08, day) : lerp(1.6, 1.0, day);
   scene.fog.color.setRGB(lerp(0.05, 0.8 + 0.12 * warm, day), lerp(0.07, 0.85 - 0.02 * warm, day), lerp(0.12, 0.9 - 0.15 * warm, day));
   scene.fog.density = lerp(0.0003, 0.00042, day);
   // no tour, um bloom sutil de dia faz as janelas "estourarem" como numa foto de interiores
-  bloom.strength = state.tour ? 0.22 + 0.45 * night : 0.6 * night;
+  bloom.strength = state.tour ? 0.22 + 0.12 * night : 0.6 * night;
   bloom.threshold = state.tour ? 0.92 : 0.82;
   bloom.enabled = night > 0.02 || !!state.tour;
   if (state.tour) state.tour.invalidateProbe(); // a luz mudou: recaptura o reflexo do ambiente
