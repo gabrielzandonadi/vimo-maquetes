@@ -6,10 +6,11 @@ interno das unidades disponíveis. O mesmo motor atende a todos os empreendiment
 
 | Página | Empreendimento |
 |---|---|
-| `index.html` | Apogeo Residences (Javé) |
+| `apogeo.html` | Apogeo Residences (Javé) |
+| `index.html` | lista das maquetes |
 | `homero.html` | Edifício Dr. Homero Tavares (Barbosa Barros) |
 
-Publicado em https://gabrielzandonadi.github.io/vimo-maquetes/ (Apogeo) e
+Publicado em https://gabrielzandonadi.github.io/vimo-maquetes/apogeo.html e
 https://gabrielzandonadi.github.io/vimo-maquetes/homero.html. O endereço antigo (`/apogeo-3d/`) redireciona.
 
 ## Rodar
@@ -18,7 +19,7 @@ https://gabrielzandonadi.github.io/vimo-maquetes/homero.html. O endereço antigo
 cd apogeo-3d && python3 -m http.server 5174
 ```
 
-Abra http://localhost:5174 (Apogeo) ou http://localhost:5174/homero.html. É preciso um servidor, porque
+Abra http://localhost:5174/apogeo.html ou http://localhost:5174/homero.html. É preciso um servidor, porque
 módulos ES não carregam via `file://`. O entorno fotorrealista do Google liga sozinho quando há uma chave em
 `js/config.js`; a chave deve estar restrita por referenciador no Google Cloud.
 
