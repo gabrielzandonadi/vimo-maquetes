@@ -54,6 +54,12 @@ export default {
   interiors,
   // tours de áreas comuns (abertos pelo painel lateral, pelo mapa de andares ou por #lazer)
   amenities: [{ id: 'lazer', name: 'Área de lazer', sub: '3º pavimento · piscina, gourmet, salão de festas, fitness e mais', floor: 3, plan: PLAN_LAZER }],
+  // tours virtuais em vídeo (9:16), por unidade ou área comum — abrem num popup
+  videos: {
+    '1004': { src: 'assets/homero/video/1004.mp4', poster: 'assets/homero/video/1004.jpg', title: 'Unidade 1004', sub: '82,88 m² · 3 quartos · 1 suíte' },
+    lazer: { src: 'assets/homero/video/lazer.mp4', poster: 'assets/homero/video/lazer.jpg', title: 'Área de lazer', sub: '3º pavimento' },
+  },
+  balconyView: false,   // sem o botão "Ver a vista da varanda" nos cards
   sunBake: 'js/projects/homero/sun.json',
   // estágio da obra (página da construtora, atualizada em 28/05/2026)
   obra: {

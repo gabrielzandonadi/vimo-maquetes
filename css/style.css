@@ -496,3 +496,30 @@ input[type=date] { background: var(--bg); border: 1px solid var(--border); color
 }
 /* notas do mapa de andares (lazer, garagem, térreo): uma linha, sem extrapolar a caixa */
 .stack .cell.note { display: block; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* tour virtual em vídeo: botão e popup 9:16 */
+.video-btn { gap: 8px; background: var(--white); color: var(--navy); border-color: var(--navy-12); }
+.video-btn:hover { background: var(--bg); border-color: var(--navy); }
+.video-btn .play-ico { color: var(--gold-3); flex: none; }
+.btn.video-btn.wide { margin-top: 8px; }
+.btn.small.video-btn { gap: 6px; }
+.btn.small.video-btn .play-ico { width: 16px; height: 16px; }
+.amenity-open.video { gap: 6px; background: var(--white); border-color: var(--navy-12); }
+.amenity-open.video:hover { background: var(--bg); border-color: var(--navy); }
+.amenity-open .play-ico { color: var(--gold-3); }
+.video-pop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 16px; background: rgba(14, 22, 44, .78); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: vpFade .22s ease; }
+.video-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 12px; animation: vpRise .28s cubic-bezier(.2,.8,.2,1); }
+.video-frame { height: min(78vh, calc(100dvh - 120px)); aspect-ratio: 9 / 16; max-width: calc(100vw - 32px); border-radius: 18px; overflow: hidden; background: #0e162c; box-shadow: 0 24px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.08); }
+.video-frame video { display: block; width: 100%; height: 100%; object-fit: cover; background: #0e162c; }
+.video-cap { display: flex; flex-direction: column; align-items: center; gap: 2px; color: #fff; text-align: center; }
+.video-cap b { font-family: var(--display); font-size: 16px; font-weight: 700; letter-spacing: .01em; }
+.video-cap span { font-size: 12px; color: rgba(255,255,255,.7); letter-spacing: .04em; }
+.video-card .close { right: -48px; top: 0; background: rgba(255,255,255,.14); color: #fff; }
+.video-card .close:hover { background: rgba(255,255,255,.26); }
+@media (max-width: 600px) {
+  .video-pop { padding: 12px; }
+  .video-frame { height: min(calc(100dvh - 110px), calc((100vw - 24px) * 16 / 9)); max-width: calc(100vw - 24px); }
+  .video-card .close { right: 8px; top: 8px; z-index: 3; background: rgba(14,22,44,.55); }
+}
+@keyframes vpFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes vpRise { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }

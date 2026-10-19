@@ -601,6 +601,13 @@ function renderAvailability() {
     b.className = 'btn small amenity-open'; b.type = 'button';
     b.innerHTML = `<span>🏊</span> Tour 3D · ${a.name.toLowerCase()}`;
     b.addEventListener('click', () => enterAmenity(a.id));
+    if (VIDEOS[a.id]) {
+      const v = document.createElement('button');
+      v.className = 'btn small amenity-open video'; v.type = 'button';
+      v.innerHTML = `${PLAY_ICO} Tour virtual · ${a.name.toLowerCase()}`;
+      v.addEventListener('click', () => openVideo(a.id));
+      $('compareOpen').after(v);
+    }
     $('compareOpen').after(b);
   });
   document.querySelectorAll('#floors .cell.amenity').forEach(b => b.addEventListener('click', () => enterAmenity(b.dataset.amenity)));
@@ -633,9 +640,11 @@ function openCompare() {
       ${row('Sol no inverno', c => cell(c, fmtDur(c.w.total), bWin))}
       ${row('Sol no verão', c => `<td>${fmtDur(c.su.total)}</td>`)}
       ${row('Tour 3D', c => `<td>${hasRealTour(c.u.name) ? `<button class="btn small" data-tour="${c.u.name}">Entrar</button>` : (INTERIORS[c.u.name] ? `<button class="btn small ghost" data-tour="${c.u.name}">Ilustrativo</button>` : '—')}</td>`)}
-      ${row('', c => `<td><button class="btn small ghost" data-see="${c.u.name}">Ver no prédio</button></td>`)}
+      ${row('Tour virtual', c => `<td>${VIDEOS[c.u.name] ? `<button class="btn small video-btn" data-video="${c.u.name}">${PLAY_ICO}Assistir</button>` : '<span class="muted">--</span>'}</td>`)}
+      ${row('Localizar', c => `<td><button class="btn small ghost" data-see="${c.u.name}">Ver no prédio</button></td>`)}
     </tbody>`;
   $('compareTable').querySelectorAll('[data-tour]').forEach(b => b.onclick = () => { closeCompare(); enterTour(unitByName.get(b.dataset.tour)); });
+  $('compareTable').querySelectorAll('[data-video]').forEach(b => b.onclick = () => openVideo(b.dataset.video));
   $('compareTable').querySelectorAll('[data-see]').forEach(b => b.onclick = () => { closeCompare(); selectUnit(unitByName.get(b.dataset.see), true); });
   $('compare').classList.remove('hidden');
 }
@@ -733,6 +742,7 @@ function renderUnitPanel() {
     </div>
     ${!hasTour && a && !plan ? `<div class="tour-soon"><b>Planta e tour 3D sob consulta</b><span>A incorporadora ainda não publicou a planta desta unidade. O tour interno com a planta oficial entra assim que ela for divulgada.</span>${illus ? `<button class="btn ghost small" id="btnIllus">Ver ambientação ilustrativa</button>` : ''}</div>` : ''}
     ${hasTour ? `<button class="btn tour-btn wide" id="btnTour"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 21V9l8-6 8 6v12h-6v-7h-4v7z" fill="currentColor"/></svg>Entrar no apartamento</button>` : ''}
+    ${a && VIDEOS[u.name] ? `<button class="btn video-btn wide" id="btnVideo">${PLAY_ICO}Assistir ao tour virtual</button>` : ''}
     <section class="sunbox ${v.key}">
       <div class="sun-verdict"><span class="sun-ico-big" aria-hidden="true">${v.icon}</span><div><b>${v.label}</b><span>${r ? sunSentence(r) : 'Calculando…'}</span></div></div>
       ${r ? `
@@ -744,10 +754,11 @@ function renderUnitPanel() {
     </section>
     <div class="actions">
       <button class="btn ghost" id="btnSunPlay">☀ Ver o sol passar</button>
-      <button class="btn ghost" id="btnView">Ver a vista da varanda</button>
+      ${PROJECT.balconyView === false ? '' : '<button class="btn ghost" id="btnView">Ver a vista da varanda</button>'}
     </div>
     ${plan ? `<details class="more" open><summary>Planta da unidade</summary><img class="plan-thumb" src="${IMG(plan)}" alt="Planta" data-lb="${plan}">${PLAN_SIMILAR[u.area] ? '<p class="note">Planta da tipologia similar de 224,51 m².</p>' : ''}</details>` : ''}`;
-  $('btnView').onclick = () => enterUnitView(m);
+  if ($('btnView')) $('btnView').onclick = () => enterUnitView(m);
+  if ($('btnVideo')) $('btnVideo').onclick = () => openVideo(u.name);
   $('btnSunPlay').onclick = () => playSunOn(m);
   if ($('btnTour')) $('btnTour').onclick = () => enterTour(m);
   if ($('btnIllus')) $('btnIllus').onclick = () => enterTour(m);
@@ -911,6 +922,40 @@ const INTERIORS = PROJECT.interiors;
 const hasRealTour = name => !!INTERIORS[name] && !INTERIORS[name].illustrative;
 // tours de áreas comuns (lazer etc.): entram no mesmo motor como uma "unidade" sem preço nem insolação
 const AMENITIES = PROJECT.amenities || [];
+
+// ======================================================================
+// Tour virtual em vídeo (popup 9:16)
+// ======================================================================
+const VIDEOS = PROJECT.videos || {};
+const PLAY_ICO = '<svg class="play-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="currentColor" opacity=".16"/><path d="M10 8.2v7.6l6-3.8z" fill="currentColor"/></svg>';
+function openVideo(id) {
+  const v = VIDEOS[id]; if (!v) return;
+  let el = $('videoPop');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'videoPop'; el.className = 'video-pop hidden';
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
+    el.innerHTML = `<div class="video-card"><button class="close" id="videoClose" aria-label="Fechar">×</button>
+      <div class="video-frame"><video id="videoEl" playsinline controls preload="auto"></video></div>
+      <div class="video-cap"><b id="videoTitle"></b><span id="videoSub"></span></div></div>`;
+    document.body.appendChild(el);
+    $('videoClose').onclick = closeVideo;
+    el.addEventListener('click', e => { if (e.target === el) closeVideo(); });
+    addEventListener('keydown', e => { if (e.code === 'Escape' && !el.classList.contains('hidden')) { e.stopPropagation(); closeVideo(); } }, true);
+  }
+  const vid = $('videoEl');
+  vid.poster = v.poster || ''; vid.src = v.src;
+  $('videoTitle').textContent = 'Tour virtual · ' + v.title;
+  $('videoSub').textContent = v.sub || '';
+  el.setAttribute('aria-label', 'Tour virtual · ' + v.title);
+  el.classList.remove('hidden');
+  vid.currentTime = 0; vid.play().catch(() => {});
+}
+function closeVideo() {
+  const el = $('videoPop'); if (!el) return;
+  const vid = $('videoEl'); vid.pause(); vid.removeAttribute('src'); vid.load();
+  el.classList.add('hidden');
+}
 const amenityById = new Map(AMENITIES.map(a => {
   INTERIORS[a.id] = a.plan;
   return [a.id, { uuid: 'amenity-' + a.id, userData: { unit: { name: a.id }, floors: [a.floor], amenity: a } }];
@@ -1708,4 +1753,4 @@ setTimeout(openFromHash, 900);
 addEventListener('hashchange', openFromHash);
 
 // exposto para depuração no console
-window.apogeo = { enterTour: n => (unitByName.has(String(n)) ? enterTour(unitByName.get(String(n))) : enterAmenity(String(n))), exitTour, enablePhotoTiles, tick, preset, state, sunLight, hemi, renderer, world, scene, camera, controls, unitMeshes, analyzer, setDate, selectUnit: n => selectUnit(unitByName.get(String(n)), true) };
+window.apogeo = { openVideo, enterTour: n => (unitByName.has(String(n)) ? enterTour(unitByName.get(String(n))) : enterAmenity(String(n))), exitTour, enablePhotoTiles, tick, preset, state, sunLight, hemi, renderer, world, scene, camera, controls, unitMeshes, analyzer, setDate, selectUnit: n => selectUnit(unitByName.get(String(n)), true) };
