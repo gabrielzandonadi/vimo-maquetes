@@ -4,6 +4,7 @@ import { SITE, PROPERTY } from './data.js';
 import { TERRAIN } from './terrain.js';
 import { buildHomero, ORIENT, floorY } from './building.js';
 import { PLAN_03, PLAN_04, PLAN_05, PLAN_06 } from './plans.js';
+import { PLAN_LAZER } from './lazer.js';
 
 // tours internos: cada unidade disponível usa a planta oficial da sua coluna
 const COL_PLAN = { '03': PLAN_03, '04': PLAN_04, '05': PLAN_05, '06': PLAN_06 };
@@ -51,6 +52,8 @@ export default {
   planImages: { '84,35 m²': 'c2_0', '82,88 m²': 'c3_0', '82,59 m²': 'c4_0', '84,43 m²': 'c5_0', '91,89 m²': 'c6_0' },
   planSimilar: {},
   interiors,
+  // tours de áreas comuns (abertos pelo painel lateral, pelo mapa de andares ou por #lazer)
+  amenities: [{ id: 'lazer', name: 'Área de lazer', sub: '3º pavimento · piscina, gourmet, salão de festas, fitness e mais', floor: 3, plan: PLAN_LAZER }],
   sunBake: 'js/projects/homero/sun.json',
   // estágio da obra (página da construtora, atualizada em 28/05/2026)
   obra: {

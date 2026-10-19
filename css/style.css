@@ -469,3 +469,27 @@ input[type=date] { background: var(--bg); border: 1px solid var(--border); color
 .splash-skip { margin-top: 8px; background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.45); border-radius: 999px; padding: 7px 18px; font: inherit; font-size: 13px; cursor: pointer; }
 .splash-skip:hover { background: rgba(255,255,255,.1); }
 @media (prefers-reduced-motion: reduce) { .sb-floors rect, .sb-sun, .splash-bg, .splash-bar b::after { animation: none; opacity: 1; } }
+.amenity-open { width: 100%; margin-top: 8px; background: var(--sand, #f4eadc); color: var(--navy, #192a56); border: 1px solid rgba(204,160,94,.55); }
+.amenity-open:hover { background: #f6c15a; }
+.stack .cell.note.amenity { cursor: pointer; border: 0; text-align: left; font: inherit; background: var(--sand, #f4eadc); color: var(--navy, #192a56); }
+.stack .cell.note.amenity b { color: #b9892f; }
+.stack .cell.note.amenity:hover { background: #f6c15a; }
+
+/* ---------- ajustes de QA: celular e tablet ---------- */
+.compare-card h2 { padding-right: 44px; }
+@media (max-width: 900px) {
+  .tour-rooms { display: flex; flex-wrap: nowrap; overflow-x: auto; max-height: none; padding-bottom: 2px; scrollbar-width: none; }
+  .tour-rooms button { flex: 0 0 auto; }
+  .sun-open .onboard { display: none; }
+}
+@media (max-width: 600px) {
+  .brand-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; max-width: 44vw; }
+  .tab { padding: 4px 7px; font-size: 13px; }
+  .tour-top { top: 10px; left: 10px; right: 10px; gap: 8px; }
+  .tour-title { max-width: calc(100vw - 140px); padding: 8px 12px; min-width: 0; }
+  .tour-title span, .tour-title em { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tour-title b { font-size: 18px; }
+  #tourExit { white-space: nowrap; padding: 8px 12px; font-size: 12.5px; }
+  .tour-light { top: 58px; right: 10px; left: auto; }
+  .tour-side { left: 10px; width: calc(100% - 20px); bottom: 84px; }
+}

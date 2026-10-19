@@ -75,7 +75,9 @@ O que foi feito:
 - **Plantas e tours:** coluna 04 traçada sobre a planta oficial (escala 0,0114 m/px, conferida pelos quartos de
   8,10 m², pela suíte de 11,25 m² e pelas camas); coluna 06 = 04 espelhada com a varanda do estar avançando
   0,5 m; colunas 05 e 03 = 04 e 06 giradas 180° — exatamente como nas plantas oficiais. As 11 unidades
-  disponíveis (colunas 03–06) têm tour.
+  disponíveis (colunas 03–06) têm tour. A área de lazer (3º pavimento) também tem tour 3D, traçado sobre a planta
+  oficial do lazer (`lazer.js`): piscina e deck, gourmet, salão de festas, fitness, sauna, jogos, brinquedoteca,
+  churrasqueira e playground — aberto pelo painel, pelo mapa de andares ou por `homero.html#lazer`.
 - **Aproximações:** as colunas de ponta (01/02/07/08) e o embasamento seguem a planta-chave e as perspectivas,
   não o projeto executivo; a posição da torre no lote é estimada.
 

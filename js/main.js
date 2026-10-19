@@ -583,7 +583,9 @@ function renderAvailability() {
   for (let f = PROJECT.floors; f >= 0; f--) {
     const us = units.filter(u => floorOf(u.name) === f);
     html += `<div class="stack-row"><span class="stack-n">${f === 0 ? 'T' : f + 'º'}</span><div class="stack-cells">`;
-    if (!us.length) html += `<span class="cell note">${notes[f] || ''}</span>`;
+    const am = AMENITIES.find(a => a.floor === f);
+    if (am) html += `<button class="cell note amenity" data-amenity="${am.id}" title="Abrir o tour 3D">${notes[f] || am.name} · <b>Tour 3D</b></button>`;
+    else if (!us.length) html += `<span class="cell note">${notes[f] || ''}</span>`;
     for (const u of us) {
       const a = isAvail(u);
       html += `<button class="cell ${a ? 'avail' : ''}" data-u="${u.name}" title="Unidade ${u.name} · ${u.area}${a ? ' · ' + brlShort(priceNum(u.price)) : ' · vendida'}">${u.name}</button>`;
@@ -592,6 +594,16 @@ function renderAvailability() {
   }
   $('floors').innerHTML = html;
   document.querySelectorAll('#availList .avail-row, #floors .cell[data-u]').forEach(b => b.addEventListener('click', () => selectUnit(unitByName.get(b.dataset.u), true)));
+  // atalho para os tours das áreas comuns, logo abaixo da lista de disponíveis
+  document.querySelectorAll('.amenity-open').forEach(b => b.remove());
+  AMENITIES.forEach(a => {
+    const b = document.createElement('button');
+    b.className = 'btn small amenity-open'; b.type = 'button';
+    b.innerHTML = `<span>🏊</span> Tour 3D · ${a.name.toLowerCase()}`;
+    b.addEventListener('click', () => enterAmenity(a.id));
+    $('compareOpen').after(b);
+  });
+  document.querySelectorAll('#floors .cell.amenity').forEach(b => b.addEventListener('click', () => enterAmenity(b.dataset.amenity)));
 }
 // comparador: todas as disponíveis lado a lado (preço, área, sol hoje / inverno / verão, tour)
 function openCompare() {
@@ -805,8 +817,27 @@ function flyToUnit(m) {
   const side = m.userData.view.side;
   const n = sideNormal(side);
   const q = new THREE.Quaternion(); apogeo.group.getWorldQuaternion(q); n.applyQuaternion(q);
-  const pos = c.clone().addScaledVector(n, 105).add(new THREE.Vector3(0, 30, 0)).addScaledVector(new THREE.Vector3(-n.z, 0, n.x), 40);
+  const pos = clearViewpoint(c, n) || c.clone().addScaledVector(n, 105).add(new THREE.Vector3(0, 30, 0)).addScaledVector(new THREE.Vector3(-n.z, 0, n.x), 40);
   animateCamera(pos, c);
+}
+// procura um ponto de vista com visada livre até a unidade (sem prédio do Google ou vizinho no meio):
+// em quadras densas, a câmera fixa a 105 m caía dentro do prédio da frente
+function clearViewpoint(c, n) {
+  const blockers = [photo?.calibrated && photo.holder.visible ? photo.tiles.group : null, world.neighbors.visible ? world.neighbors : null].filter(Boolean);
+  const lat = new THREE.Vector3(-n.z, 0, n.x), ray = new THREE.Raycaster(), v = new THREE.Vector3();
+  const tries = [];
+  for (const h of [22, 40, 62]) for (const d of [65, 90, 120]) for (const a of [0.45, -0.45, 0.85, -0.85, 0.1]) tries.push({ d, a, h });
+  const t0 = performance.now();
+  for (const k of tries) {
+    const dir = n.clone().multiplyScalar(Math.cos(k.a)).addScaledVector(lat, Math.sin(k.a)).normalize();
+    const p = c.clone().addScaledVector(dir, k.d).add(new THREE.Vector3(0, k.h, 0));
+    if (!blockers.length) return p;
+    v.copy(p).sub(c); const L = v.length(); v.normalize();
+    ray.set(c.clone().addScaledVector(v, 3), v); ray.far = L - 3;
+    if (!blockers.some(b => ray.intersectObject(b, true).length)) return p;
+    if (performance.now() - t0 > 250) break; // não trava a interface em máquinas lentas
+  }
+  return null;
 }
 function enterUnitView(m) {
   exitWalk();
@@ -878,12 +909,19 @@ function pickUnit() {
 const INTERIORS = PROJECT.interiors;
 // tour com planta oficial (as ambientações ilustrativas não contam como planta)
 const hasRealTour = name => !!INTERIORS[name] && !INTERIORS[name].illustrative;
+// tours de áreas comuns (lazer etc.): entram no mesmo motor como uma "unidade" sem preço nem insolação
+const AMENITIES = PROJECT.amenities || [];
+const amenityById = new Map(AMENITIES.map(a => {
+  INTERIORS[a.id] = a.plan;
+  return [a.id, { uuid: 'amenity-' + a.id, userData: { unit: { name: a.id }, floors: [a.floor], amenity: a } }];
+}));
+const enterAmenity = id => { const m = amenityById.get(id); if (m) enterTour(m); };
 const tours = {};
 let tourSaved = null;
 function tourFor(name) {
   const plan = INTERIORS[name]; if (!plan) return null;
   if (!tours[name]) {
-    const m = unitByName.get(name);
+    const m = unitByName.get(name) || amenityById.get(name);
     tours[name] = new InteriorTour({
       plan, parent: apogeo.group, level: plan.baseY ?? floorY(m.userData.floors[0]), camera, renderer, dom: renderer.domElement,
       ui: { onNode: n => {
@@ -900,7 +938,8 @@ function enterTour(m) {
   const name = m.userData.unit.name, tour = tourFor(name);
   if (!tour) return;
   exitWalk(); camAnim = null; hideHint();
-  $('loading').classList.remove('done'); $('loading').querySelector('p').textContent = 'Montando o apartamento…';
+  const amen = m.userData.amenity;
+  $('loading').classList.remove('done'); $('loading').querySelector('p').textContent = amen ? `Montando ${amen.name.toLowerCase()}…` : 'Montando o apartamento…';
   setTimeout(() => {
     tour.build();
     // esconde as partes do prédio que atravessam o apartamento (o interior traz as próprias lajes, paredes e vidros)
@@ -932,12 +971,18 @@ function enterTour(m) {
     gtao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.3, thickness: 0.8, scale: 1.25 }); gtao.blendIntensity = 1.0;
     document.body.classList.add('in-tour');
     $('tour').classList.remove('hidden');
-    $('tourUnit').textContent = `Unidade ${name} · ${m.userData.unit.area} · ${isAvail(m.userData.unit) ? brlShort(priceNum(m.userData.unit.price)) : 'vendida'}`;
-    const rs = state.results.get(m.uuid) || analyzer.analyzeUnit(m, state.date), vs = sunVerdict(rs), ws = sunWindow(rs);
-    $('tourSun').textContent = `${vs.icon} ${vs.label}${ws ? ` · ${fmtHour(ws[0])}–${fmtHour(ws[1])}` : ''}`;
+    $('tourExit').textContent = amen ? `Sair ${amen.exitLabel || 'do lazer'}` : 'Sair do apartamento';
+    if (amen) {
+      $('tourUnit').textContent = `${PROPERTY.name} · ${amen.sub}`;
+      $('tourSun').textContent = '🌿 Área comum do condomínio · luz do sol real';
+    } else {
+      $('tourUnit').textContent = `Unidade ${name} · ${m.userData.unit.area} · ${isAvail(m.userData.unit) ? brlShort(priceNum(m.userData.unit.price)) : 'vendida'}`;
+      const rs = state.results.get(m.uuid) || analyzer.analyzeUnit(m, state.date), vs = sunVerdict(rs), ws = sunWindow(rs);
+      $('tourSun').textContent = `${vs.icon} ${vs.label}${ws ? ` · ${fmtHour(ws[0])}–${fmtHour(ws[1])}` : ''}`;
+    }
     const multi = tour.levels.length > 1;
     $('tourRooms').innerHTML = tour.plan.nodes.filter(n => !n.link).map(n => `<button data-i="${tour.plan.nodes.indexOf(n)}">${multi ? tour.levels[n.lv].short + ' · ' : ''}${n.name}</button>`).join('');
-    $('tourRooms').querySelectorAll('button').forEach(b => b.addEventListener('click', () => tour.goTo(tour.plan.nodes[+b.dataset.i])));
+    $('tourRooms').querySelectorAll('button').forEach(b => b.addEventListener('click', () => tour.goTo(tour.plan.nodes[+b.dataset.i], false, true)));
     $('tourBanner').classList.toggle('hidden', !tour.plan.illustrative);
     if (tour.plan.image) $('tourPlanImg').src = IMG(tour.plan.image);
     tour.enter();
@@ -1374,11 +1419,16 @@ function initOnboarding() {
   if (seen) return;
   const el = document.createElement('div');
   el.className = 'onboard';
-  el.innerHTML = `<b>Bem-vindo ao ${PROJECT.short}</b><span>Arraste para girar a maquete. Clique numa unidade (ou na lista à esquerda) para ver preço, sol e entrar no apartamento.</span><button type="button">Entendi</button>`;
+  const touch = matchMedia('(max-width: 900px)').matches;
+  el.innerHTML = `<b>Bem-vindo ao ${PROJECT.short}</b><span>${touch ? 'Arraste para girar a maquete. Toque numa unidade (ou abra a lista ‹) para ver preço, sol e entrar no apartamento.' : 'Arraste para girar a maquete. Clique numa unidade (ou na lista à esquerda) para ver preço, sol e entrar no apartamento.'}</span><button type="button">Entendi</button>`;
   $('view-maquete').appendChild(el);
   const close = () => { el.remove(); try { localStorage.setItem(LS('onboarded'), '1'); } catch (e) { /* ok */ } };
   el.querySelector('button').onclick = close;
   renderer.domElement.addEventListener('pointerdown', () => setTimeout(close, 2500), { once: true });
+  // some sozinho depois de alguns segundos com a maquete na tela, ou ao abrir qualquer menu
+  const auto = () => setTimeout(close, 12000);
+  if (splash.done) auto(); else { const iv = setInterval(() => { if (splash.done) { clearInterval(iv); auto(); } }, 500); }
+  for (const id of ['layersBtn', 'sunExpand', 'availToggle']) $(id)?.addEventListener('click', close, { once: true });
 }
 
 // voa até a unidade e anima o dia do nascer ao pôr do sol
@@ -1406,7 +1456,7 @@ function initTabs() {
 function showTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
-  if (name === 'mapa' && !embed.blocked && !$('mapFrame').src) $('mapFrame').src = `https://maps.google.com/maps?q=${LAT},${LON}&t=k&z=18&hl=pt-BR&output=embed`;
+  if (name === 'mapa' && !embed.blocked && !$('mapFrame').src) { const L = toLatLon(LOT_CENTER.x, LOT_CENTER.z); $('mapFrame').src = `https://maps.google.com/maps?q=${L.lat.toFixed(6)},${L.lng.toFixed(6)}&t=k&z=18&hl=pt-BR&output=embed`; }
   if (name === 'maquete') onResize();
 }
 
@@ -1433,10 +1483,11 @@ addEventListener('securitypolicyviolation', e => {
 });
 
 function initMapCard() {
+  const LL = toLatLon(LOT_CENTER.x, LOT_CENTER.z), LAT_ = LL.lat.toFixed(6), LON_ = LL.lng.toFixed(6);
   $('mapCard').innerHTML = `<h3 style="margin-top:0">${PROPERTY.name}</h3>
     <div>${PROPERTY.address} · ${PROPERTY.neighborhood.name}</div><div class="muted">${PROPERTY.city} / ES</div>
-    <div class="actions"><a class="btn" target="_blank" rel="noreferrer" href="https://www.google.com/maps/dir/?api=1&destination=${LAT},${LON}">Como chegar</a>
-    <a class="btn ghost" target="_blank" rel="noreferrer" href="https://www.google.com/maps/@${LAT},${LON},250a,35y,${PROJECT.earthHeading}h,60t/data=!3m1!1e3">Google Earth 3D ↗</a></div>`;
+    <div class="actions"><a class="btn" target="_blank" rel="noreferrer" href="https://www.google.com/maps/dir/?api=1&destination=${LAT_},${LON_}">Como chegar</a>
+    <a class="btn ghost" target="_blank" rel="noreferrer" href="https://www.google.com/maps/@${LAT_},${LON_},250a,35y,${PROJECT.earthHeading}h,60t/data=!3m1!1e3">Google Earth 3D ↗</a></div>`;
 }
 
 // galeria + lightbox
@@ -1646,9 +1697,10 @@ function openFromHash() {
   const id = (location.hash || '').replace('#', '');
   const m = unitByName.get(id);
   if (m) { showTab('maquete'); selectUnit(m, true); }
+  else if (amenityById.has(id)) { showTab('maquete'); enterAmenity(id); }
 }
 setTimeout(openFromHash, 900);
 addEventListener('hashchange', openFromHash);
 
 // exposto para depuração no console
-window.apogeo = { enterTour: n => enterTour(unitByName.get(String(n))), exitTour, enablePhotoTiles, tick, preset, state, sunLight, hemi, renderer, world, scene, camera, controls, unitMeshes, analyzer, setDate, selectUnit: n => selectUnit(unitByName.get(String(n)), true) };
+window.apogeo = { enterTour: n => (unitByName.has(String(n)) ? enterTour(unitByName.get(String(n))) : enterAmenity(String(n))), exitTour, enablePhotoTiles, tick, preset, state, sunLight, hemi, renderer, world, scene, camera, controls, unitMeshes, analyzer, setDate, selectUnit: n => selectUnit(unitByName.get(String(n)), true) };

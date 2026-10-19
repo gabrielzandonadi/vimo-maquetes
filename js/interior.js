@@ -457,7 +457,8 @@ export class InteriorTour {
       const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
       const step = 1.6 / this.S;
       for (let x = x0 + step / 2; x < x1; x += step) for (let y = y0 + step / 2; y < y1; y += step) {
-        if (inPoly(x, y, f.poly) && !this.cur.walls.some(w => x > w[0] - 8 && x < w[2] + 8 && y > w[1] - 8 && y < w[3] + 8)) pts.push([x, y]);
+        if (inPoly(x, y, f.poly) && !this.cur.walls.some(w => x > w[0] - 8 && x < w[2] + 8 && y > w[1] - 8 && y < w[3] + 8)
+          && (!this.cur.ceilingPolys || this.cur.ceilingPolys.some(cp => inPoly(x, y, cp)))) pts.push([x, y]); // sem luminária sob o céu
       }
     }
     const geo = new THREE.CircleGeometry(0.045, 16); geo.rotateX(Math.PI / 2);
@@ -466,7 +467,8 @@ export class InteriorTour {
     pts.forEach(([x, y], i) => { m4.makeTranslation(X(x), H - 0.006, Z(y)); inst.setMatrixAt(i, m4); });
     this.group.add(inst);
     // luzes reais (quentes) para a noite: uma por ambiente principal
-    for (const n of this.cur.nodes.filter(n => ['estar', 'sala', 'jantar', 'cozinha', 'master', 's01', 's02', 's03', 'circ', 'gourmet', 'reversivel'].includes(n.id))) {
+    const lit = this.cur.lightNodes || this.plan.lightNodes || ['estar', 'sala', 'jantar', 'cozinha', 'master', 's01', 's02', 's03', 'circ', 'gourmet', 'reversivel'];
+    for (const n of this.cur.nodes.filter(n => lit.includes(n.id))) {
       const l = new THREE.PointLight(0xffd6a0, 0, 8, 1.5);
       l.position.set(X(n.p[0]), H - 0.4, Z(n.p[1]));
       this.group.add(l); this.lights.push(l);
@@ -532,6 +534,15 @@ export class InteriorTour {
             RB(x0 + i * w + 0.16, Math.min(b1, b2), x0 + (i + 1) * w - 0.16, Math.max(b1, b2), 0.55, 0.92, mats.cushion, 0.06).rotation.x = 0.2 * dz;
           }
         }
+        break;
+      }
+      case 'treadmill': {
+        // esteira: base, lona escura, laterais, colunas e painel na frente (lado norte do retângulo)
+        const { x0, z0, x1, z1 } = R, cx = (x0 + x1) / 2;
+        RB(x0, z0 + 0.15, x1, z1, 0.02, 0.2, mats.black, 0.03);
+        B(x0 + 0.06, z0 + 0.2, x1 - 0.06, z1 - 0.05, 0.2, 0.215, mats.cabinet, false);
+        for (const x of [x0 + 0.02, x1 - 0.06]) { B(x, z0 + 0.12, x + 0.04, z0 + 0.2, 0.2, 1.25, mats.steel); B(x, z0 + 0.12, x + 0.04, z0 + 0.55, 1.0, 1.04, mats.steel); }
+        RB(cx - 0.3, z0 + 0.06, cx + 0.3, z0 + 0.2, 1.22, 1.42, mats.screen, 0.02);
         break;
       }
       case 'bench': RB(R.x0, R.z0, R.x1, R.z1, 0.08, 0.46, mats.fabricDark, 0.05); B(R.x0 + 0.05, R.z0 + 0.05, R.x1 - 0.05, R.z1 - 0.05, 0, 0.08, mats.black); break;
@@ -902,12 +913,14 @@ export class InteriorTour {
     this.probe.update(this.renderer, scene);
     this.nodeMeshes.forEach(m => { m.visible = m.userData.wasVis; });
   }
-  goTo(node, instant) {
+  goTo(node, instant, turn) {
     const from = this.camera.position.clone(), to = this.worldOf(node);
     if (instant) { this.camera.position.copy(to); this.yaw = node.look; this.pitch = -0.16; }
     else {
       // mantém a direção do olhar, ou vira para o destino se estiver de costas
       this.anim = { from, to, t0: performance.now(), dur: Math.min(1100, 350 + from.distanceTo(to) * 90) };
+      // escolhendo o ambiente pela lista, a câmera também gira para a vista sugerida do ambiente
+      if (turn) Object.assign(this.anim, { yaw0: this.yaw, dyaw: ((node.look - this.yaw) % 360 + 540) % 360 - 180, pitch0: this.pitch });
     }
     this.node = node; this.probeDirty = true;
     this.aimWindowLights(node);
@@ -919,10 +932,12 @@ export class InteriorTour {
     if (this.anim) {
       const k = Math.min(1, (performance.now() - this.anim.t0) / this.anim.dur), e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
       this.camera.position.lerpVectors(this.anim.from, this.anim.to, e);
+      if (this.anim.dyaw !== undefined) { this.yaw = this.anim.yaw0 + this.anim.dyaw * e; this.pitch = this.anim.pitch0 + (-0.14 - this.anim.pitch0) * e; }
       if (k >= 1) { this.anim = null; this.probeDirty = true; }
     }
     this.captureProbe();
-    this.camera.fov += (this.fov - this.camera.fov) * 0.25;
+    const asp = this.camera.aspect, fovT = asp < 1 ? Math.min(98, this.fov * (1 + (1 - asp) * 0.6)) : this.fov;
+    this.camera.fov += (fovT - this.camera.fov) * 0.25;
     this.camera.updateProjectionMatrix();
     const d = this.dirFromYaw(this.yaw, this.pitch);
     this.camera.lookAt(this.camera.position.clone().add(d));
