@@ -21,7 +21,7 @@ export default {
   floors: 12,
   extracted: '16/10/2026',
   rooms: { word: 'quartos', title: 'Quartos' },
-  floorNotes: { 3: 'Lazer · piscina, salão, gourmet', 2: 'Garagem', 1: 'Garagem', 0: 'Térreo · portaria' },
+  floorNotes: { 3: 'Área de lazer', 2: 'Garagem', 1: 'Garagem', 0: 'Térreo · portaria' },
   unitType: m => {
     const c = m.userData.unit.name.slice(-2);
     return { '01': 'Frente · Rua Humberto Serrano', '02': 'Frente · Rua Humberto Serrano', '07': 'Frente · Rua Romero Botelho', '08': 'Frente · Rua Romero Botelho' }[c] || `Lateral ${+c % 2 ? 'norte' : 'sul'} · coluna ${c}`;

@@ -64,6 +64,7 @@ main { position: fixed; inset: 68px 0 0 0; }
 #stage.pick { cursor: crosshair; }
 #loading { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: var(--bg); z-index: 5; transition: opacity .6s; color: var(--navy-soft); }
 #loading.done { opacity: 0; pointer-events: none; }
+#loading.instant { transition: none; }
 .spinner { width: 42px; height: 42px; border: 3px solid var(--navy-12); border-top-color: var(--navy); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 12px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -471,7 +472,7 @@ input[type=date] { background: var(--bg); border: 1px solid var(--border); color
 @media (prefers-reduced-motion: reduce) { .sb-floors rect, .sb-sun, .splash-bg, .splash-bar b::after { animation: none; opacity: 1; } }
 .amenity-open { width: 100%; margin-top: 8px; background: var(--sand, #f4eadc); color: var(--navy, #192a56); border: 1px solid rgba(204,160,94,.55); }
 .amenity-open:hover { background: #f6c15a; }
-.stack .cell.note.amenity { cursor: pointer; border: 0; text-align: left; font: inherit; background: var(--sand, #f4eadc); color: var(--navy, #192a56); }
+.stack .cell.note.amenity { cursor: pointer; pointer-events: auto; border: 0; text-align: left; font-family: inherit; font-size: 10.5px; font-weight: 600; background: var(--sand, #f4eadc); color: var(--navy, #192a56); }
 .stack .cell.note.amenity b { color: #b9892f; }
 .stack .cell.note.amenity:hover { background: #f6c15a; }
 
@@ -493,3 +494,5 @@ input[type=date] { background: var(--bg); border: 1px solid var(--border); color
   .tour-light { top: 58px; right: 10px; left: auto; }
   .tour-side { left: 10px; width: calc(100% - 20px); bottom: 84px; }
 }
+/* notas do mapa de andares (lazer, garagem, térreo): uma linha, sem extrapolar a caixa */
+.stack .cell.note { display: block; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

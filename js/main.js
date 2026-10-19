@@ -584,7 +584,7 @@ function renderAvailability() {
     const us = units.filter(u => floorOf(u.name) === f);
     html += `<div class="stack-row"><span class="stack-n">${f === 0 ? 'T' : f + 'º'}</span><div class="stack-cells">`;
     const am = AMENITIES.find(a => a.floor === f);
-    if (am) html += `<button class="cell note amenity" data-amenity="${am.id}" title="Abrir o tour 3D">${notes[f] || am.name} · <b>Tour 3D</b></button>`;
+    if (am) html += `<button class="cell note amenity" data-amenity="${am.id}" title="${am.name} · clique para o tour 3D">${notes[f] || am.name}</button>`;
     else if (!us.length) html += `<span class="cell note">${notes[f] || ''}</span>`;
     for (const u of us) {
       const a = isAvail(u);
@@ -939,7 +939,8 @@ function enterTour(m) {
   if (!tour) return;
   exitWalk(); camAnim = null; hideHint();
   const amen = m.userData.amenity;
-  $('loading').classList.remove('done'); $('loading').querySelector('p').textContent = amen ? `Montando ${amen.name.toLowerCase()}…` : 'Montando o apartamento…';
+  // tela de montagem entra já opaca (sem fade), para não mostrar o meio-termo maquete/apartamento
+  $('loading').classList.add('instant'); $('loading').classList.remove('done'); $('loading').querySelector('p').textContent = amen ? `Montando ${amen.name.toLowerCase()}…` : 'Montando o apartamento…';
   setTimeout(() => {
     tour.build();
     // esconde as partes do prédio que atravessam o apartamento (o interior traz as próprias lajes, paredes e vidros)
@@ -987,10 +988,14 @@ function enterTour(m) {
     if (tour.plan.image) $('tourPlanImg').src = IMG(tour.plan.image);
     tour.enter();
     updateSun();
-    // compila os shaders do interior (luzes de janela, pendentes) antes de revelar a cena
-    const reveal = () => $('loading').classList.add('done');
+    // compila os shaders e captura o reflexo do ambiente ANTES de revelar: sem isso a cena aparecia
+    // escura e clareava em seguida (piscada); só tira a tela de montagem depois do 1º quadro já pronto
+    const reveal = () => {
+      tour.primeProbe?.(); markDirty(1500);
+      requestAnimationFrame(() => requestAnimationFrame(() => { $('loading').classList.remove('instant'); $('loading').classList.add('done'); }));
+    };
     (renderer.compileAsync ? renderer.compileAsync(scene, camera) : Promise.resolve()).then(reveal, reveal);
-  }, 30);
+  }, 60);
 }
 function exitTour() {
   const tour = state.tour; if (!tour) return;

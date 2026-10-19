@@ -536,6 +536,17 @@ export class InteriorTour {
         }
         break;
       }
+      case 'bbq': {
+        // churrasqueira de alvenaria: base em tijolo aparente, boca escura, coifa e chaminé
+        const { x0, z0, x1, z1 } = R, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+        B(x0, z0, x1, z1, 0, 0.9, mats.rust);
+        B(x0 + 0.08, z0 + 0.08, x1 - 0.08, z1 - 0.02, 0.9, 1.35, mats.black);
+        RB(x0 - 0.04, z0 - 0.04, x1 + 0.04, z1 + 0.04, 0.88, 0.94, mats.stone, 0.01);
+        const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.16, Math.max(x1 - x0, z1 - z0) * 0.62, 0.55, 4), mats.rust);
+        hood.rotation.y = Math.PI / 4; hood.position.set(cx, 1.65, cz); put(hood);
+        B(cx - 0.12, cz - 0.12, cx + 0.12, cz + 0.12, 1.9, 2.7, mats.rust);
+        break;
+      }
       case 'treadmill': {
         // esteira: base, lona escura, laterais, colunas e painel na frente (lado norte do retângulo)
         const { x0, z0, x1, z1 } = R, cx = (x0 + x1) / 2;
@@ -900,6 +911,13 @@ export class InteriorTour {
     this.goTo(n, true);
   }
   exit() { this.active = false; if (this.root) this.root.visible = false; this.anim = null; }
+  // captura inicial do reflexo, em duas passadas (a 2ª já enxerga a luz rebatida da 1ª), antes da revelação
+  primeProbe() {
+    if (!this.probe) return;
+    const a = this.anim; this.anim = null;
+    for (let i = 0; i < 2; i++) { this.probeDirty = true; this._probeT = 0; this.captureProbe(); }
+    this.anim = a;
+  }
   // recaptura o reflexo (6 renders de 256 px): ao chegar num ponto e quando a luz muda
   invalidateProbe() { this.probeDirty = true; }
   captureProbe() {
