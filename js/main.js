@@ -1298,22 +1298,68 @@ function initUI() {
 // ---------- tela de abertura ----------
 // Cobre a página até o entorno fotorrealista estar calibrado (ou 30 s, ou sem chave/erro).
 // A cena continua carregando por trás; o botão "Entrar agora" aparece depois de alguns segundos.
-const splash = { done: false, t0: performance.now(), hasKey: false, g: 0 };
+// Com PROJECT.intro (vídeo institucional), a abertura toca o vídeo enquanto carrega e NÃO entra sozinha:
+// ao terminar o carregamento, libera o botão "Entrar na maquete" (?intro=0 volta ao comportamento antigo).
+const splash = { done: false, ready: false, t0: performance.now(), hasKey: false, g: 0, video: null };
 {
   $('splashName').textContent = PROPERTY.name;
   $('splashSub').textContent = `${PROPERTY.neighborhood.name} · ${PROPERTY.city}/ES`;
   $('splashBg').style.backgroundImage = `url(${IMG(PROJECT.hero)})`;
   $('splashSkip').addEventListener('click', () => splashFinish());
+  if (PROJECT.intro && $('splashVideo') && new URLSearchParams(location.search).get('intro') !== '0') splashVideoInit(PROJECT.intro);
+}
+function splashVideoInit(I) {
+  const v = $('splashVideo'), wrap = $('splashVideoWrap'), snd = $('splashSound');
+  const vertical = matchMedia('(orientation: portrait) and (max-width: 900px)').matches;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  splash.video = v;
+  $('splash').classList.add('has-video', vertical ? 'vert' : 'horiz');
+  wrap.classList.remove('hidden');
+  v.poster = vertical ? I.posterV : I.posterH;
+  v.src = vertical ? I.v : I.h;
+  v.muted = true; v.loop = true; v.playsInline = true;
+  if (!reduce) v.play().catch(() => wrap.classList.add('paused'));
+  else wrap.classList.add('paused');
+  $('splashPlay').addEventListener('click', () => { wrap.classList.remove('paused'); v.play().catch(() => {}); });
+  v.addEventListener('pause', () => { if (!splash.done) wrap.classList.add('paused'); });
+  v.addEventListener('play', () => wrap.classList.remove('paused'));
+  snd.addEventListener('click', () => {
+    v.muted = !v.muted; snd.setAttribute('aria-pressed', String(!v.muted));
+    snd.querySelector('span').textContent = v.muted ? 'Ativar som' : 'Som ligado';
+    if (!v.muted && v.paused) v.play().catch(() => {});
+  });
+  const btn = $('splashEnter');
+  btn.classList.remove('hidden');
+  btn.addEventListener('click', () => { if (splash.ready) splashEnter(); });
 }
 function splashStep(id, st) { const el = $(id); el.classList.toggle('on', st === 'on'); el.classList.toggle('ok', st === 'ok'); }
 function splashFinish() {
+  if (splash.done || splash.ready) return;
+  if (splash.video) {   // com vídeo: só libera o botão; quem entra é o visitante
+    splash.ready = true; PERF.splashMs = Math.round(performance.now() - splash.t0); perfMark('splashReady');
+    $('splashBar').style.width = '100%';
+    for (const id of ['stModel', 'stSun']) splashStep(id, 'ok');
+    if (splash.hasKey) splashStep('stGoogle', 'ok');
+    $('stGooglePct').textContent = '';
+    $('splashSkip').classList.add('hidden');
+    const btn = $('splashEnter');
+    btn.disabled = false; btn.classList.add('ready');
+    btn.querySelector('span').textContent = 'Entrar na maquete';
+    $('splash').classList.add('ready');
+    markDirty(1200);
+    return;
+  }
+  splashEnter();
+}
+function splashEnter() {
   if (splash.done) return;
-  splash.done = true; PERF.splashMs = Math.round(performance.now() - splash.t0); perfMark('splashDone');
+  splash.done = true; if (!PERF.splashMs) PERF.splashMs = Math.round(performance.now() - splash.t0); perfMark('splashDone');
   $('splashBar').style.width = '100%';
-  setTimeout(() => { $('splash').classList.add('done'); markDirty(1200); }, 350);
+  if (splash.video) { splash.video.pause(); splash.video.muted = true; }
+  setTimeout(() => { $('splash').classList.add('done'); markDirty(1200); if (splash.video) setTimeout(() => { splash.video.removeAttribute('src'); splash.video.load(); }, 900); }, splash.video ? 0 : 350);
 }
 const splashTimer = setInterval(() => {
-  if (splash.done) { clearInterval(splashTimer); return; }
+  if (splash.done || splash.ready) { clearInterval(splashTimer); return; }
   const el = performance.now() - splash.t0;
   const model = !!PERF.marks.firstFrame, sun = !!PERF.marks.sunBake || !PROJECT.sunBake || analyzer.source === 'google';
   splashStep('stModel', model ? 'ok' : 'on');
@@ -1321,8 +1367,10 @@ const splashTimer = setInterval(() => {
   if (photo) splash.g = Math.max(splash.g, photo.calibrated ? 1 : Math.min(0.95, 0.55 * Math.min(1, (photo.tiles.stats?.loaded || 0) / 180) + 0.45 * Math.min(1, el / 11000)));
   splashStep('stGoogle', photo?.calibrated ? 'ok' : (splash.hasKey ? 'on' : ''));
   $('stGooglePct').textContent = splash.hasKey && !photo?.calibrated ? Math.round(splash.g * 100) + '%' : '';
-  $('splashBar').style.width = Math.round(100 * (0.12 * model + 0.08 * sun + (splash.hasKey ? 0.8 * splash.g : 0.8 * model))) + '%';
-  if (el > 6000) $('splashSkip').classList.remove('hidden');
+  const pct = Math.round(100 * (0.12 * model + 0.08 * sun + (splash.hasKey ? 0.8 * splash.g : 0.8 * model)));
+  $('splashBar').style.width = pct + '%';
+  if (splash.video) $('splashEnter').querySelector('span').textContent = `Carregando a maquete… ${Math.min(99, pct)}%`;
+  else if (el > 6000) $('splashSkip').classList.remove('hidden');
   if (photo?.calibrated || (!splash.hasKey && model && el > 900) || el > 30000) splashFinish();
 }, 200);
 // ---------- entorno fotorrealista (Google 3D Tiles) ----------

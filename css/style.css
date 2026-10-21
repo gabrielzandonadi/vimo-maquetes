@@ -470,6 +470,36 @@ input[type=date] { background: var(--bg); border: 1px solid var(--border); color
 .splash-skip { margin-top: 8px; background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.45); border-radius: 999px; padding: 7px 18px; font: inherit; font-size: 13px; cursor: pointer; }
 .splash-skip:hover { background: rgba(255,255,255,.1); }
 @media (prefers-reduced-motion: reduce) { .sb-floors rect, .sb-sun, .splash-bg, .splash-bar b::after { animation: none; opacity: 1; } }
+/* abertura com vídeo institucional (PROJECT.intro): vídeo em cima, progresso e botão "Entrar na maquete" embaixo */
+.splash.has-video { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(10px, 2.2vh, 22px); overflow-y: auto; }
+.splash-video { position: relative; z-index: 1; flex: 0 0 auto; border-radius: 18px; overflow: hidden; background: #0b1630; box-shadow: 0 24px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(246,193,90,.22); }
+.splash.horiz .splash-video { width: min(1100px, 100%, calc((100svh - 250px) * 16 / 9)); aspect-ratio: 16 / 9; }
+.splash.vert .splash-video { height: min(62svh, calc((100vw - 32px) * 16 / 9)); aspect-ratio: 9 / 16; }
+.splash-video video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.splash-sound { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px 0 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); background: rgba(15,29,61,.72); color: #fff; font: inherit; font-size: 13px; cursor: pointer; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.splash-sound svg { width: 20px; height: 20px; fill: currentColor; }
+.splash-sound .on { display: none; }
+.splash-sound[aria-pressed="true"] { background: #f6c15a; color: #192a56; border-color: #f6c15a; }
+.splash-sound[aria-pressed="true"] .on { display: inline; }
+.splash-sound:focus-visible, .splash-play:focus-visible, .splash-enter:focus-visible { outline: 3px solid #f6c15a; outline-offset: 3px; }
+.splash-play { position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px 0 0 -38px; border-radius: 50%; border: 0; background: #f6c15a; color: #192a56; display: none; place-items: center; cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+.splash-play svg { width: 34px; height: 34px; fill: currentColor; margin-left: 4px; }
+.splash-video.paused .splash-play { display: grid; }
+.splash.has-video .splash-card { width: min(560px, 100%); gap: 4px; flex: 0 0 auto; }
+.splash.has-video .splash-logo, .splash.has-video .splash-building, .splash.has-video .splash-tip { display: none; }
+.splash.has-video .splash-name { font-size: 22px; }
+.splash.has-video .splash-sub { margin-bottom: 2px; }
+.splash.has-video .splash-steps { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; font-size: 12.5px; margin: 4px 0 0; }
+.splash.has-video .splash-steps i { width: 14px; height: 14px; }
+.splash.has-video .splash-steps li.ok i::after { left: 3px; top: 0; }
+.splash-enter { margin-top: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 50px; min-width: min(320px, 100%); padding: 0 26px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.1); color: rgba(255,255,255,.85); font-family: KoHo, sans-serif; font-weight: 700; font-size: 17px; letter-spacing: .01em; cursor: progress; transition: background .35s, color .35s, transform .2s, box-shadow .35s; }
+.splash-enter svg { width: 20px; height: 20px; opacity: 0; transform: translateX(-6px); transition: opacity .3s, transform .3s; }
+.splash-enter.ready { background: #f6c15a; color: #192a56; border-color: #f6c15a; cursor: pointer; animation: enterGlow 2.2s ease-in-out infinite; }
+.splash-enter.ready svg { opacity: 1; transform: none; }
+.splash-enter.ready:hover { transform: translateY(-1px); background: #ffd57e; }
+@keyframes enterGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(246,193,90,.55); } 50% { box-shadow: 0 0 0 12px rgba(246,193,90,0); } }
+@media (max-width: 600px) { .splash.has-video { justify-content: flex-start; padding-top: max(16px, env(safe-area-inset-top)); } .splash.has-video .splash-name { font-size: 19px; } .splash-enter { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .splash-enter.ready { animation: none; } }
 .amenity-open { width: 100%; margin-top: 8px; background: var(--sand, #f4eadc); color: var(--navy, #192a56); border: 1px solid rgba(204,160,94,.55); }
 .amenity-open:hover { background: #f6c15a; }
 .stack .cell.note.amenity { cursor: pointer; pointer-events: auto; border: 0; text-align: left; font-family: inherit; font-size: 10.5px; font-weight: 600; background: var(--sand, #f4eadc); color: var(--navy, #192a56); }

@@ -59,6 +59,11 @@ export default {
     '1004': { src: 'assets/homero/video/1004.mp4', poster: 'assets/homero/video/1004.jpg', title: 'Unidade 1004', sub: '82,88 m² · 3 quartos · 1 suíte' },
     lazer: { src: 'assets/homero/video/lazer.mp4', poster: 'assets/homero/video/lazer.jpg', title: 'Área de lazer', sub: '3º pavimento' },
   },
+  // vídeo institucional da tela de abertura (feito em código com Remotion: tools/intro-video)
+  intro: {
+    h: 'assets/homero/intro/homero-16x9.mp4', posterH: 'assets/homero/intro/homero-16x9.jpg',
+    v: 'assets/homero/intro/homero-9x16.mp4', posterV: 'assets/homero/intro/homero-9x16.jpg',
+  },
   balconyView: false,   // sem o botão "Ver a vista da varanda" nos cards
   sunBake: 'js/projects/homero/sun.json',
   // estágio da obra (página da construtora, atualizada em 28/05/2026)
