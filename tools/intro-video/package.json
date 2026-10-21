@@ -1,0 +1,25 @@
+{
+  "name": "homero-intro-video",
+  "version": "1.0.0",
+  "description": "Vídeo institucional do Ed. Dr. Homero Tavares (Remotion) para a tela de abertura da maquete",
+  "scripts": {
+    "prepare-assets": "bash scripts/prepare.sh",
+    "studio": "remotion studio src/index.ts",
+    "render:h": "remotion render src/index.ts HomeroH out/raw_h.mp4 --codec=h264 --crf=18",
+    "render:v": "remotion render src/index.ts HomeroV out/raw_v.mp4 --codec=h264 --crf=18",
+    "encode": "bash scripts/encode.sh",
+    "trilha": "cd trilha && node render.mjs pulso elegante calmo && python3 master.py pulso && python3 master.py elegante && python3 master.py calmo && cp pulso.wav ../public/trilha.wav"
+  },
+  "dependencies": {
+    "@fontsource/arsenal": "5.1.0",
+    "@fontsource/jetbrains-mono": "5.1.0",
+    "@fontsource/koho": "5.1.0",
+    "@remotion/cli": "4.0.300",
+    "@remotion/renderer": "4.0.300",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.300",
+    "tone": "14.7.77"
+  },
+  "private": true
+}

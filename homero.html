@@ -24,6 +24,12 @@
 <!-- tela de abertura: fica até o entorno fotorrealista estar pronto -->
 <div class="splash" id="splash" role="status" aria-live="polite">
   <div class="splash-bg" id="splashBg"></div>
+  <!-- vídeo institucional (PROJECT.intro): toca enquanto a maquete carrega -->
+  <div class="splash-video hidden" id="splashVideoWrap">
+    <video id="splashVideo" muted playsinline loop preload="auto" aria-label="Vídeo institucional do Edifício Dr. Homero Tavares"></video>
+    <button class="splash-play" id="splashPlay" type="button" aria-label="Assistir ao vídeo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>
+    <button class="splash-sound" id="splashSound" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path class="on" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Ativar som</span></button>
+  </div>
   <div class="splash-card">
     <img class="splash-logo" src="assets/vimo-logo-white.png" alt="Vimo">
     <div class="splash-name" id="splashName"></div>
@@ -46,6 +52,7 @@
     <div class="splash-bar"><b id="splashBar"></b></div>
     <p class="splash-tip" id="splashTip">Dica: depois de abrir, clique numa unidade para ver preço, sol e entrar no apartamento.</p>
     <button class="splash-skip hidden" id="splashSkip" type="button">Entrar agora</button>
+    <button class="splash-enter hidden" id="splashEnter" type="button" disabled><span>Carregando a maquete…</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
 </div>
 <header class="topbar">
