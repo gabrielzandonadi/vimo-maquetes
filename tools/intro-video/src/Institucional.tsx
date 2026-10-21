@@ -5,7 +5,7 @@
 import React from 'react';
 import { AbsoluteFill, Audio, Img, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 
-export const DURATION = 840; // 28 s a 30 fps
+export const DURATION = 960; // 32 s a 30 fps — cortes nos compassos da trilha (105 BPM, 1 compasso = 68,57 quadros)
 
 const C = { bg: '#0f1d3d', navy: '#192a56', navy2: '#23457c', gold: '#f6c15a', goldL: '#ffe2a0', sand: '#f4eadc', white: '#ffffff', mute: 'rgba(255,255,255,.62)' };
 const DISPLAY = 'KoHo, sans-serif';
@@ -126,7 +126,7 @@ const Photo: React.FC<{ src: string; at: number; dur: number; from?: number; to?
 const Abertura: React.FC = () => {
   const f = useCurrentFrame(); const { u, v } = useLayout();
   const big = v ? 150 : 190;
-  const out = prog(f, 104, 120);
+  const out = prog(f, 121, 137);
   return (
     <AbsoluteFill style={{ background: C.bg, transform: `scale(${1 + out * .06})`, opacity: 1 - out * .3 }}>
       <Grid />
@@ -149,7 +149,7 @@ const Edificio: React.FC = () => {
   const card = prog(f, 20, 36);
   return (
     <AbsoluteFill style={{ background: C.bg }}>
-      <Photo src="c8_0.jpg" at={0} dur={135} pos={v ? '45% 30%' : '50% 32%'} from={1.18} to={1.04} />
+      <Photo src="c8_0.jpg" at={0} dur={137} pos={v ? '45% 30%' : '50% 32%'} from={1.18} to={1.04} />
       <AbsoluteFill style={{ background: v ? 'linear-gradient(180deg, rgba(15,29,61,.0) 30%, rgba(15,29,61,.92) 78%)' : 'linear-gradient(90deg, rgba(15,29,61,.92) 0%, rgba(15,29,61,.55) 42%, rgba(15,29,61,0) 70%)' }} />
       <Chrome />
       <AbsoluteFill style={{ justifyContent: v ? 'flex-end' : 'center', padding: v ? `0 ${70 * u}px ${190 * u}px` : `0 ${120 * u}px`, gap: 16 * u }}>
@@ -208,33 +208,77 @@ const Local: React.FC = () => {
   );
 };
 
-const Apartamento: React.FC = () => {
-  const f = useCurrentFrame(); const { u, v, width, height } = useLayout();
-  const specs = ['3 quartos, sendo 1 suíte', '2 vagas de garagem', 'Varanda gourmet', 'Preparação para split', 'Aquecimento a gás'];
-  const reveal = prog(f, 6, 40);
-  const planW = v ? width - 140 * u : width * .5, planH = planW * 730 / 1055;
+// as plantas do edifício (data.js: áreas e quartos por coluna; index.js: imagens oficiais; plans.js: giros e espelhos)
+const TIPOS: { area: string; cols: string[]; img: string; unid: number; nota: string }[] = [
+  { area: '91,89', cols: ['01', '02', '07', '08'], img: 'c6_0.jpg', unid: 36, nota: 'Frente' },
+  { area: '84,35', cols: ['03'], img: 'c2_0.jpg', unid: 9, nota: 'Lateral norte' },
+  { area: '82,88', cols: ['04'], img: 'c3_0.jpg', unid: 9, nota: 'Lateral sul' },
+  { area: '82,59', cols: ['05'], img: 'c4_0.jpg', unid: 9, nota: 'Lateral norte' },
+  { area: '84,43', cols: ['06'], img: 'c5_0.jpg', unid: 9, nota: 'Lateral sul' },
+];
+const KEY = [['07', '05', '03', '01'], ['08', '06', '04', '02']];   // planta-chave das plantas oficiais
+const toNum = (a: string) => parseFloat(a.replace(',', '.'));
+const Tipologias: React.FC = () => {
+  const f = useCurrentFrame(); const { fps } = useVideoConfig(); const { u, v, width } = useLayout();
+  const t0 = 44, per = 26;
+  const act = f < t0 ? -1 : Math.min(TIPOS.length - 1, Math.floor((f - t0) / per));
+  const cur = act >= 0 ? TIPOS[act].cols : [];
+  const barT = prog(f, 150, 176);
+  const lo = 82.59, hi = 91.89;
+  const cell = (v ? 74 : 62) * u;
+  const keyPlan = (
+    <div style={{ display: 'grid', gap: 8 * u, opacity: prog(f, 18, 30) }}>
+      <div style={{ fontFamily: MONO, fontSize: 15 * u, letterSpacing: '.14em', color: C.navy2 }}>PLANTA-CHAVE · 8 COLUNAS</div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(4, ${cell}px)`, gap: 6 * u, padding: 8 * u, background: '#fff', borderRadius: 12 * u, boxShadow: `0 ${10 * u}px ${30 * u}px rgba(25,42,86,.12)` }}>
+        {KEY.flat().map(c => {
+          const on = cur.includes(c);
+          return <div key={c} style={{ height: cell * .72, borderRadius: 6 * u, display: 'grid', placeItems: 'center', fontFamily: MONO, fontWeight: 500, fontSize: 20 * u, background: on ? C.gold : C.sand, color: C.navy, border: `${2 * u}px solid ${on ? C.gold : 'rgba(25,42,86,.18)'}`, transform: `scale(${on ? 1.06 : 1})` }}>{c}</div>;
+        })}
+      </div>
+    </div>
+  );
+  const card = (T: typeof TIPOS[number], i: number) => {
+    const s = spring({ frame: f - (26 + i * 6), fps, config: { damping: 16, stiffness: 170 } });
+    const on = i === act;
+    const thumbW = v ? 290 * u : 300 * u, thumbH = v ? 176 * u : 290 * u;
+    return (
+      <div key={T.area} style={{ display: 'flex', flexDirection: v ? 'row' : 'column', gap: (v ? 18 : 10) * u, alignItems: v ? 'center' : 'stretch', padding: 12 * u, borderRadius: 16 * u, background: on ? C.navy : '#fff', boxShadow: on ? `0 ${16 * u}px ${40 * u}px rgba(25,42,86,.3)` : `0 ${8 * u}px ${24 * u}px rgba(25,42,86,.1)`, transform: `translateY(${(1 - s) * 60 * u}px) scale(${on ? 1.04 : 1})`, opacity: s, width: v ? '100%' : thumbW + 24 * u }}>
+        <div style={{ width: thumbW, height: thumbH, flex: '0 0 auto', borderRadius: 10 * u, background: '#fff', overflow: 'hidden', position: 'relative' }}>
+          <Img src={staticFile(T.img)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: '36% 56%', transform: `scale(${(v ? 1.25 : 1.6) + (on ? (f - t0 - i * per) * .002 : 0)})`, transformOrigin: '36% 56%' }} />
+        </div>
+        <div style={{ display: 'grid', gap: 4 * u }}>
+          <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: (v ? 56 : 50) * u, lineHeight: 1, color: on ? C.gold : C.navy }}>{T.area} m²</div>
+          <div style={{ fontFamily: MONO, fontSize: 17 * u, letterSpacing: '.08em', color: on ? C.white : C.navy2 }}>COL. {T.cols.join(' · ')}</div>
+          <div style={{ fontFamily: MONO, fontSize: 15 * u, letterSpacing: '.08em', color: on ? C.goldL : 'rgba(25,42,86,.6)' }}>{T.nota.toUpperCase()} · {T.unid} UNID.</div>
+        </div>
+      </div>
+    );
+  };
+  const range = (
+    <div style={{ width: '100%', opacity: barT, display: 'grid', gap: 10 * u }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 17 * u, letterSpacing: '.12em', color: C.navy2 }}><span>ÁREA PRIVATIVA</span><span>82,59 → 91,89 m²</span></div>
+      <div style={{ position: 'relative', height: 10 * u, borderRadius: 10 * u, background: 'rgba(25,42,86,.14)' }}>
+        <div style={{ position: 'absolute', inset: 0, width: `${barT * 100}%`, borderRadius: 10 * u, background: `linear-gradient(90deg, ${C.navy2}, ${C.gold})` }} />
+        {TIPOS.map((T, i) => <div key={T.area} style={{ position: 'absolute', left: `${(toNum(T.area) - lo) / (hi - lo) * 100}%`, top: '50%', width: 20 * u, height: 20 * u, margin: `${-10 * u}px 0 0 ${-10 * u}px`, borderRadius: '50%', background: i === act ? C.gold : C.white, border: `${3 * u}px solid ${C.navy}`, transform: `scale(${prog(f, 156 + i * 3, 166 + i * 3)})` }} />)}
+      </div>
+    </div>
+  );
   return (
     <AbsoluteFill style={{ background: C.sand }}>
       <Grid light />
       <Chrome light />
-      <div style={{ position: 'absolute', left: v ? 70 * u : width * .45, top: v ? 150 * u : (height - planH) / 2 - 10 * u, width: planW, height: planH, overflow: 'hidden', borderRadius: 18 * u, background: '#fff', boxShadow: `0 ${24 * u}px ${60 * u}px rgba(25,42,86,.18)`, clipPath: `inset(0 ${100 - reveal * 100}% 0 0 round ${18 * u}px)` }}>
-        <Img src={staticFile('c3_0.jpg')} style={{ position: 'absolute', width: planW * 2000 / 1055, maxWidth: 'none', left: -470 / 1055 * planW, top: -320 / 1055 * planW }} />
-        <div style={{ position: 'absolute', left: 0, top: `${interpolate(f, [8, 44], [0, 100], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })}%`, width: '100%', height: 3 * u, background: C.gold, boxShadow: `0 0 ${18 * u}px ${C.gold}`, opacity: f < 46 ? 1 : 0 }} />
-      </div>
-      <AbsoluteFill style={v ? { justifyContent: 'flex-end', padding: `0 ${70 * u}px ${150 * u}px`, gap: 12 * u } : { width: width * .4, padding: `0 0 0 ${110 * u}px`, justifyContent: 'center', gap: 14 * u }}>
-        <Label at={8} color={C.navy2}>// 03 · O APARTAMENTO</Label>
-        <Line words={['3', 'quartos.']} at={14} size={v ? 116 : 128} color={C.navy} />
-        <Line words={['1', 'suíte.']} at={22} size={v ? 116 : 128} color={C.navy} />
-        <div style={{ margin: `${8 * u}px 0 ${8 * u}px` }}><Stamp text="82,59 a 91,89 m²" at={36} size={v ? 46 : 44} rot={-2} /></div>
-        <div style={{ display: 'grid', gap: 10 * u, marginTop: 6 * u }}>
-          {specs.map((s, i) => {
-            const t = prog(f, 48 + i * 7, 60 + i * 7);
-            return (
-              <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 14 * u, opacity: t, transform: `translateX(${(1 - t) * -24 * u}px)`, fontFamily: MONO, fontSize: 22 * u, color: C.navy, letterSpacing: '.04em' }}>
-                <span style={{ width: 26 * u, height: 26 * u, borderRadius: 6 * u, background: C.navy, color: C.gold, display: 'grid', placeItems: 'center', fontSize: 18 * u }}>✓</span>{s}
-              </div>);
-          })}
+      <AbsoluteFill style={{ padding: v ? `${140 * u}px ${70 * u}px ${120 * u}px` : `${120 * u}px ${100 * u}px ${80 * u}px`, display: 'flex', flexDirection: 'column', gap: (v ? 30 : 26) * u }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: v ? 'flex-start' : 'flex-end', gap: 30 * u, flexDirection: v ? 'column' : 'row' }}>
+          <div style={{ display: 'grid', gap: 12 * u }}>
+            <Label at={4} color={C.navy2}>// 03 · AS PLANTAS</Label>
+            {v ? <><Line words={['5', 'plantas.']} at={8} size={104} color={C.navy} /><Line words={['8', 'colunas.']} at={14} size={104} color={C.navy2} /></>
+              : <Line words={['5', 'plantas.', '8', 'colunas.']} at={8} size={110} color={C.navy} />}
+            <div style={{ fontFamily: MONO, fontSize: 20 * u, letterSpacing: '.1em', color: C.navy2, opacity: prog(f, 24, 36) }}>72 APARTAMENTOS · 3 QUARTOS, SENDO 1 SUÍTE</div>
+          </div>
+          {keyPlan}
         </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: v ? 'column' : 'row', gap: (v ? 14 : 18) * u, justifyContent: v ? 'flex-start' : 'space-between', alignItems: v ? 'stretch' : 'center' }}>{TIPOS.map(card)}</div>
+        <div>{range}</div>
       </AbsoluteFill>
     </AbsoluteFill>
   );
@@ -243,7 +287,7 @@ const Apartamento: React.FC = () => {
 const LAZER: [string, string, string][] = [['c7_2.jpg', 'Piscina com prainha', '50% 60%'], ['c7_1.jpg', 'Espaço gourmet', '50% 50%'], ['c7_0.jpg', 'Academia', '50% 50%'], ['c7_5.jpg', 'Salão de festas', '50% 50%'], ['c7_4.jpg', 'Salão de jogos', '50% 50%'], ['c7_3.jpg', 'Playground', '40% 60%']];
 const Lazer: React.FC = () => {
   const f = useCurrentFrame(); const { u, v, width } = useLayout();
-  const per = 24, start = 18;
+  const per = 31, start = 17;   // cada ambiente dura 2 tempos da trilha
   const idx = Math.min(LAZER.length - 1, Math.max(0, Math.floor((f - start) / per)));
   const list = ['Piscina', 'Sauna', 'Área gourmet', 'Churrasqueira', 'Salão de festas', 'Sala de jogos', 'Academia', 'Brinquedoteca', 'Playground', 'Mercado'];
   const tick = list.concat(list).join('  ✦  ');
@@ -278,7 +322,7 @@ const Final: React.FC = () => {
   const logo = spring({ frame: f - 4, fps, config: { damping: 16 } });
   return (
     <AbsoluteFill style={{ background: C.navy }}>
-      <Photo src="noite.jpg" at={0} dur={135} pos="50% 40%" from={1.2} to={1.08} wipe="circle" />
+      <Photo src="noite.jpg" at={0} dur={137} pos="50% 40%" from={1.2} to={1.08} wipe="circle" />
       <AbsoluteFill style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(15,29,61,.72) 0%, rgba(15,29,61,.94) 70%)' }} />
       <Grid />
       <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: 20 * u, padding: `0 ${60 * u}px` }}>
@@ -296,14 +340,14 @@ const Final: React.FC = () => {
   );
 };
 
-const CUTS = [0, 120, 255, 390, 540, 705, DURATION];
+const CUTS = [0, 137, 274, 411, 617, 823, DURATION];   // compassos 0, 2, 4, 6, 9, 12 e fim
 export const Institucional: React.FC = () => {
-  const scenes = [Abertura, Edificio, Local, Apartamento, Lazer, Final];
+  const scenes = [Abertura, Edificio, Local, Tipologias, Lazer, Final];
   return (
     <AbsoluteFill style={{ background: C.bg }}>
       {scenes.map((S, i) => <Sequence key={i} from={CUTS[i]} durationInFrames={CUTS[i + 1] - CUTS[i]}><S /></Sequence>)}
       {CUTS.slice(1, -1).map(c => <Bars key={c} at={c - 7} />)}
-      <Audio src={staticFile('trilha.wav')} volume={0.9} />
+      <Audio src={staticFile('trilha.wav')} />
     </AbsoluteFill>
   );
 };
